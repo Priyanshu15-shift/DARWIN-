@@ -253,3 +253,6 @@ This project is released under the MIT License. See [`LICENSE`](LICENSE) for det
 ## Acknowledgements
 
 DARWIN is inspired by recent advances in self-supervised representation learning, domain generalization, adaptive filtering, and calibration-free Brain-Computer Interface research.
+#   D A R W I N -  
+ #   D A R W I N -  
+ 

@@ -7,3 +7,4 @@ __pycache__/
 *.npz
 *.mat
 *.edf
+get_channel_names.py

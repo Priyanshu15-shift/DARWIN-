@@ -34,7 +34,7 @@ NOTCH_FREQ_BY_DATASET = {
 # Drop "openbmi" from here until its download finishes, then add it back
 # and rerun -- the other three won't be touched again since they're
 # already cached (see the skip-if-cached check below).
-DATASETS_TO_RUN = ["bci_iv_2a", "bci_iv_2b", "physionet"]
+DATASETS_TO_RUN = ["bci_iv_2a", "bci_iv_2b", "physionet","openbmi"]
 
 
 def get_subject_list(dataset_key, limit=None):
@@ -131,4 +131,4 @@ if __name__ == "__main__":
     # the caching + resume logic works correctly on a small, fast run
     # before committing to the full ~180-subject pool, which will take
     # meaningfully longer.
-    run_full_pool(subject_limit=2)
+    run_full_pool()
