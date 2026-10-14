@@ -60,16 +60,118 @@ import os
 import sys
 import time
 
+import numpy as np
 import torch
 from torch.optim import AdamW
 
 sys.path.append(os.path.dirname(__file__))
-from sampler import make_phase0_dataloader
+from sampler import PairDataset, make_phase0_dataloader, parse_session_args
 from augmentations import augment_batch, AugmentationConfig
 from lsp import LSPBank
 from encoder import Phase0Encoder
 from projection_head import ProjectionHead
 from losses import InfoNCELoss
+
+
+# Datasets with no cross-session claim (single session): exempt from the
+# "must list its training sessions" check below.
+SINGLE_SESSION_DATASETS = {"physionet"}
+
+
+def check_session_policy(policy, dataset_keys, sessions):
+    """
+    Session policy for Phase 0 (spec rev A, R1):
+      "cross_session" (default): every pooled dataset that has more than one
+          session must appear in `sessions`, so the held-out test session can
+          never leak into Phase 0 by forgetting a dataset. PhysioNet is exempt.
+      "all": use every session of every dataset (the pre-v3.6 behaviour --
+          NOT valid for cross-session claims). Allowed, but warns loudly.
+    """
+    if policy == "all":
+        print("[train] WARNING: session_policy='all' -- Phase 0 sees every session, "
+              "including any test session. Not valid for cross-session claims.")
+        return
+    if policy != "cross_session":
+        raise ValueError(f"Unknown session_policy '{policy}'")
+    missing = [d for d in dataset_keys
+               if d not in SINGLE_SESSION_DATASETS
+               and (sessions is None or d not in sessions)]
+    if missing:
+        raise ValueError(
+            f"session_policy='cross_session' requires training sessions for "
+            f"{missing}. Pass --sessions DATASET=label[,label] for each, or "
+            f"--session_policy all to knowingly train on every session."
+        )
+
+
+@torch.no_grad()
+def export_embeddings(lsp_bank, encoder, proj_head, dataset_keys, cache_dir,
+                      out_path, train_sessions=None, batch_size=128,
+                      device="cpu", include_proj=True):
+    """
+    Embedding export hook. Runs the FROZEN LSP + encoder (eval mode, BatchNorm
+    on running statistics) over EVERY epoch of the given datasets -- all
+    sessions, not just the Phase 0 training ones -- and writes one .npz:
+
+        embeddings      (N, 64) pre-projection encoder output (the state space)
+        projected       (N, 64) projection-head output (only if include_proj)
+        dataset, subject, epoch_idx, session, run, trial_idx, order_idx, y
+        in_phase0_train (N,) bool -- True where Phase 0 was allowed to see the
+                        epoch (its session is in train_sessions; all True if
+                        train_sessions is None)
+
+    Rows are in dataset/subject/cache order (acquisition order within each
+    subject), so chronological streaming for the drift study and filter can be
+    read straight from order_idx. Labels y are exported for probes/evaluation
+    only -- Phase 0 itself never used them.
+    """
+    lsp_bank.eval()
+    encoder.eval()
+    proj_head.eval()
+
+    full = PairDataset(cache_dir=cache_dir, datasets=dataset_keys, sessions=None)
+    n = len(full)
+    emb = np.zeros((n, 64), dtype=np.float32)
+    proj = np.zeros((n, 64), dtype=np.float32) if include_proj else None
+
+    by_ds = {}
+    for pos, (ds, _s, _i) in enumerate(full.index):
+        by_ds.setdefault(ds, []).append(pos)
+
+    for ds, positions in by_ds.items():
+        for start in range(0, len(positions), batch_size):
+            chunk = positions[start:start + batch_size]
+            x = torch.stack([full[p] for p in chunk], dim=0).to(device)
+            e = encoder(lsp_bank(x, ds))
+            emb[chunk] = e.cpu().numpy()
+            if include_proj:
+                proj[chunk] = proj_head(e).cpu().numpy()
+        full._cache.clear()  # free this dataset's epochs before the next one
+        print(f"[export] {ds}: {len(positions)} epochs encoded")
+
+    meta = full.get_meta(range(n))
+    ds_arr = np.array([t[0] for t in full.index])
+    subj_arr = np.array([t[1] for t in full.index])
+    ep_arr = np.array([t[2] for t in full.index], dtype=np.int64)
+
+    in_train = np.ones(n, dtype=bool)
+    if train_sessions:
+        for ds, labels in train_sessions.items():
+            m = ds_arr == ds
+            in_train[m] = np.isin(meta["session"][m], [str(l) for l in labels])
+
+    payload = dict(
+        embeddings=emb, dataset=ds_arr, subject=subj_arr, epoch_idx=ep_arr,
+        session=meta["session"], run=meta["run"], trial_idx=meta["trial_idx"],
+        order_idx=meta["order_idx"], y=meta["y"], in_phase0_train=in_train,
+    )
+    if include_proj:
+        payload["projected"] = proj
+    os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
+    np.savez_compressed(out_path, **payload)
+    print(f"[export] wrote {out_path}: {n} epochs, "
+          f"{int(in_train.sum())} seen by Phase 0, {int((~in_train).sum())} held out")
+    return out_path
 
 
 def build_subject_id_tensor(dataset, batch_positions, device):
@@ -136,6 +238,10 @@ def train_phase0(
     checkpoint_path="phase0_checkpoint_pooled.pt",
     device=None,
     seed=0,
+    sessions=None,
+    session_policy="cross_session",
+    export_path=None,
+    export_include_proj=True,
 ):
     """
     Trains LSP + encoder + projection head across MULTIPLE datasets
@@ -166,6 +272,8 @@ def train_phase0(
 
     torch.manual_seed(seed)
 
+    check_session_policy(session_policy, dataset_keys, sessions)
+
     # --- Data ---
     # make_phase0_dataloader already supports a multi-dataset `datasets`
     # list -- PairDataset indexes all of them together, and
@@ -175,6 +283,7 @@ def train_phase0(
     loader = make_phase0_dataloader(
         cache_dir=cache_dir,
         datasets=dataset_keys,
+        sessions=sessions,
         batch_size=batch_size,
         k_per_subject=k_per_subject,
         num_workers=0,  # keep 0 on Windows to avoid multiprocessing spawn issues;
@@ -310,12 +419,20 @@ def train_phase0(
         "encoder_state_dict": encoder.state_dict(),
         "projection_head_state_dict": proj_head.state_dict(),
         "dataset_keys": dataset_keys,
+        "train_sessions": sessions,  # requested filter (None = all sessions)
+        "train_sessions_used": dataset.session_summary(),  # what was actually kept/dropped
+        "session_policy": session_policy,
         "channel_names_by_dataset": channel_names_by_dataset,
         "loss_history": loss_history,
         "final_loss": mean_epoch_loss,
     }
     torch.save(checkpoint, checkpoint_path)
     print(f"[train] Checkpoint saved to {checkpoint_path}")
+
+    if export_path:
+        export_embeddings(lsp_bank, encoder, proj_head, dataset_keys, cache_dir,
+                          export_path, train_sessions=sessions, device=device,
+                          include_proj=export_include_proj)
 
     return checkpoint
 
@@ -337,6 +454,29 @@ if __name__ == "__main__":
                               "run (was capped at 16 for single-dataset "
                               "runs on 2a/2b alone).")
     parser.add_argument("--max_epochs", type=int, default=150)
+    parser.add_argument("--sessions", type=str, nargs="*", default=None,
+                         metavar="DATASET=LABEL[,LABEL]",
+                         help="Session labels Phase 0 may see, per dataset, "
+                              "e.g. --sessions bci_iv_2a=0train "
+                              "bci_iv_2b=0train,1train,2train. Datasets not "
+                              "listed keep ALL sessions -- list every "
+                              "dataset that has a held-out test session.")
+    parser.add_argument("--session_policy", type=str, default="cross_session",
+                         choices=["cross_session", "all"],
+                         help="cross_session (default): every multi-session "
+                              "dataset must have its training sessions listed "
+                              "in --sessions. all: use every session (not "
+                              "valid for cross-session claims).")
+    parser.add_argument("--export_embeddings", type=str, default=None,
+                         metavar="OUT.npz",
+                         help="After training, export frozen encoder "
+                              "embeddings for ALL epochs/sessions to this file.")
+    parser.add_argument("--export_no_proj", action="store_true",
+                         help="Skip the projection-head output in the export.")
+    parser.add_argument("--export_from_checkpoint", type=str, default=None,
+                         metavar="CKPT.pt",
+                         help="Skip training: load this checkpoint and export "
+                              "embeddings to --export_embeddings.")
     args = parser.parse_args()
 
     # Real channel names, confirmed against MOABB raw data via
@@ -373,6 +513,25 @@ if __name__ == "__main__":
     }
 
     channel_names_by_dataset = {ds: CHANNEL_NAMES[ds] for ds in args.datasets}
+
+    if args.export_from_checkpoint:
+        if not args.export_embeddings:
+            parser.error("--export_from_checkpoint needs --export_embeddings OUT.npz")
+        dev = "cuda" if torch.cuda.is_available() else "cpu"
+        ck = torch.load(args.export_from_checkpoint, map_location=dev, weights_only=False)
+        ds_keys = ck["dataset_keys"]
+        lsp_b = LSPBank({d: ck["channel_names_by_dataset"][d] for d in ds_keys},
+                        n_shared=16).to(dev)
+        enc = Phase0Encoder(n_channels=16, sample_rate=250).to(dev)
+        head = ProjectionHead(input_dim=64, hidden_dim=128, output_dim=64).to(dev)
+        lsp_b.load_state_dict(ck["lsp_state_dict"])
+        enc.load_state_dict(ck["encoder_state_dict"])
+        head.load_state_dict(ck["projection_head_state_dict"])
+        export_embeddings(lsp_b, enc, head, ds_keys, args.cache_dir,
+                          args.export_embeddings,
+                          train_sessions=ck.get("train_sessions"), device=dev,
+                          include_proj=not args.export_no_proj)
+        sys.exit(0)
     checkpoint_name = "phase0_checkpoint_" + "_".join(sorted(args.datasets)) + ".pt"
 
     train_phase0(
@@ -382,4 +541,8 @@ if __name__ == "__main__":
         batch_size=args.batch_size,
         max_epochs=args.max_epochs,
         checkpoint_path=checkpoint_name,
+        sessions=parse_session_args(args.sessions),
+        session_policy=args.session_policy,
+        export_path=args.export_embeddings,
+        export_include_proj=not args.export_no_proj,
     )

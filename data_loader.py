@@ -33,8 +33,36 @@ DATASET_REGISTRY = {
 # (80 Hz) of the four; this is the ceiling the 9-band filter bank must respect.
 TARGET_SFREQ = 250.0
 
+# --------------------------------------------------------------------------
+# BANDPASS FIX (was the root cause of the dead-band problem):
+# moabb.paradigms.MotorImagery defaults to fmin=8.0, fmax=32.0 -- a
+# mu/beta-only bandpass meant for classic CSP-style motor imagery
+# pipelines. Left at that default, 5 of augmentations.py's/encoder.py's
+# 9 canonical bands (EEG_9_BANDS_HZ: delta 0.5-4, theta-low 4-6,
+# theta-high 6-8, gamma-low 30-40, gamma-high 40-45) arrive dead or
+# nearly dead, and preprocessing.py's 50/60 Hz notch filter becomes a
+# no-op since nothing above 32 Hz survives to notch out in the first
+# place.
+#
+# TARGET_FMAX=48.0 is chosen to stay safely under every dataset's
+# post-resample Nyquist (125 Hz at TARGET_SFREQ=250.0) AND under
+# PhysioNet's native-rate Nyquist (160 Hz native -> 80 Hz Nyquist,
+# the tightest ceiling of the four datasets pre-resampling) -- see
+# EEG_9_BANDS_HZ's top edge (45 Hz) for why 48 leaves headroom rather
+# than clipping the last band exactly at its boundary.
+# TARGET_FMIN=0.5 matches EEG_9_BANDS_HZ's own low edge (delta band
+# starts at 0.5 Hz) -- no point requesting content below what any
+# downstream band actually uses.
+#
+# Changing these invalidates any cache built before this fix -- a full
+# re-cache (full_pool_preprocess.py, force=True or a fresh cache dir)
+# and Phase 0 retrain is required after updating this.
+TARGET_FMIN = 0.5
+TARGET_FMAX = 48.0
 
-def load_dataset(dataset_key, subjects=None, resample=TARGET_SFREQ):
+
+def load_dataset(dataset_key, subjects=None, resample=TARGET_SFREQ,
+                  fmin=TARGET_FMIN, fmax=TARGET_FMAX):
     """
     Load one of the four DARWIN source datasets via MOABB.
 
@@ -47,6 +75,14 @@ def load_dataset(dataset_key, subjects=None, resample=TARGET_SFREQ):
         expensive for openbmi/physionet, so pass a small list while developing.
     resample : float
         Target sampling rate in Hz. MOABB resamples during epoch extraction.
+    fmin, fmax : float
+        Bandpass edges in Hz, passed straight to MOABB's MotorImagery
+        paradigm. Explicitly overriding MOABB's own defaults (8/32 Hz)
+        here is required -- left unset, MOABB silently restricts every
+        dataset to a mu/beta-only bandpass, starving 5 of the 9 bands
+        EEG_9_BANDS_HZ (augmentations.py/encoder.py) expects to see.
+        Defaults to TARGET_FMIN/TARGET_FMAX above; pass explicit values
+        only if you have a specific reason to deviate per-call.
 
     Returns
     -------
@@ -64,7 +100,7 @@ def load_dataset(dataset_key, subjects=None, resample=TARGET_SFREQ):
         )
 
     dataset = DATASET_REGISTRY[dataset_key]()
-    paradigm = MotorImagery(resample=resample)
+    paradigm = MotorImagery(resample=resample, fmin=fmin, fmax=fmax)
 
     subj_list = subjects if subjects is not None else dataset.subject_list
     X, y, metadata = paradigm.get_data(dataset=dataset, subjects=subj_list)
@@ -75,6 +111,7 @@ def load_dataset(dataset_key, subjects=None, resample=TARGET_SFREQ):
 
 
 def load_dataset_with_retry(dataset_key, subjects=None, resample=TARGET_SFREQ,
+                             fmin=TARGET_FMIN, fmax=TARGET_FMAX,
                              max_retries=3, retry_delay=15):
     """
     Same as load_dataset, but retries on failure with a delay between
@@ -83,6 +120,10 @@ def load_dataset_with_retry(dataset_key, subjects=None, resample=TARGET_SFREQ,
     run several hundred MB each) where a transient network stall is more
     likely than with the smaller BCI-IV files.
 
+    fmin, fmax : float
+        Forwarded to load_dataset -- see its docstring. Kept as explicit
+        parameters here (not just **kwargs) so a bandpass override is
+        visible at the call site, not buried.
     max_retries : int
         Total attempts before giving up and re-raising the last error.
     retry_delay : float
@@ -96,7 +137,8 @@ def load_dataset_with_retry(dataset_key, subjects=None, resample=TARGET_SFREQ,
     last_exception = None
     for attempt in range(1, max_retries + 1):
         try:
-            return load_dataset(dataset_key, subjects=subjects, resample=resample)
+            return load_dataset(dataset_key, subjects=subjects, resample=resample,
+                                 fmin=fmin, fmax=fmax)
         except Exception as e:
             last_exception = e
             print(f"  Attempt {attempt}/{max_retries} failed: "
@@ -107,7 +149,7 @@ def load_dataset_with_retry(dataset_key, subjects=None, resample=TARGET_SFREQ,
     raise last_exception
 
 
-def load_all_datasets(subjects_per_dataset=None):
+def load_all_datasets(subjects_per_dataset=None, fmin=TARGET_FMIN, fmax=TARGET_FMAX):
     """
     Load all four datasets and return them as a dict keyed by dataset_id.
 
@@ -115,13 +157,16 @@ def load_all_datasets(subjects_per_dataset=None):
         Optional per-dataset subject subset, e.g. {"physionet": [1, 2, 3]}
         to keep early development runs fast. Datasets not in the dict load
         every subject.
+    fmin, fmax : float
+        Forwarded to load_dataset for every dataset in the registry --
+        see load_dataset's docstring for why these must be set explicitly.
     """
     subjects_per_dataset = subjects_per_dataset or {}
     out = {}
     for key in DATASET_REGISTRY:
         subs = subjects_per_dataset.get(key, None)
         print(f"Loading {key} (subjects={'all' if subs is None else subs}) ...")
-        X, y, meta = load_dataset(key, subjects=subs)
+        X, y, meta = load_dataset(key, subjects=subs, fmin=fmin, fmax=fmax)
         out[key] = (X, y, meta)
         print(f"  -> X shape {X.shape}, {len(np.unique(y))} classes, "
               f"{meta['subject'].nunique()} subjects, "
@@ -136,4 +181,5 @@ if __name__ == "__main__":
     X, y, meta = load_dataset("bci_iv_2a", subjects=[1])
     print("X shape:", X.shape)          # (n_epochs, n_channels, n_times)
     print("labels:", np.unique(y))
+    print(f"bandpass: {TARGET_FMIN}-{TARGET_FMAX} Hz (was MOABB default 8-32 Hz)")
     print(meta[["subject", "session"]].head())

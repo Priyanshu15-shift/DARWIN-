@@ -45,6 +45,30 @@ trained in spec Section 4/7 ("Backpropagation scope: LSP matrices +
 EEGNet encoder + projection head"). The Gaussian init just gives training
 a sensible, spatially-coherent starting point instead of random noise.
 
+V3.6 CHANGE -- RIGID CHANNEL-INTERSECTION MODE (new `rigid_intersection` flag):
+Spec v3.6 requires that LSP can be reverted to a rigid channel intersection
+with ONE flag flip, as the fallback if the learned projection fails across
+datasets (risk table: "LSP fails across datasets -> flag flip to rigid channel
+intersection -> single-montage results"). `LSPBank(..., rigid_intersection=True)`
+does exactly that:
+    - finds the electrode names common to EVERY dataset in the bank
+      (case-insensitive, trailing dots/whitespace ignored);
+    - builds a FIXED (16, C_dataset) selection matrix per dataset: one
+      one-hot row per common channel, remaining rows all-zero, so the
+      encoder still receives its fixed 16-channel input;
+    - stores that matrix as a BUFFER, not a Parameter: nothing is trained,
+      total_param_count() is 0, and the optimizer in train_phase0.py simply
+      gets an empty LSP parameter list.
+The state_dict key names are unchanged ("layers.<dataset>.W"), so existing
+learned checkpoints still load into a default (rigid_intersection=False)
+bank. Do NOT load a learned checkpoint's lsp_state_dict into a rigid bank:
+it would overwrite the selection matrix. Rigid mode is a separate Phase 0
+run with its own checkpoint. With bci_iv_2a + bci_iv_2b + physionet the
+intersection is just C3, Cz, C4 (3 live channels, 13 zero channels), which
+is exactly the "single-montage" degradation the risk table accepts.
+Pass the result of `bank.config()` into the checkpoint so downstream code
+can tell which mode produced it.
+
 DEPENDENCY: requires `mne` for standard 10-20/10-10 electrode positions
 (mne is very likely already installed as a MOABB dependency in your
 venv). If missing: `uv pip install mne`.
@@ -203,6 +227,43 @@ def _gaussian_init_weights(dataset_channel_names, n_shared=16,
     return weights  # (n_shared, C_dataset)
 
 
+def _normalize_name(name):
+    """Case-insensitive channel key; ignores trailing dots/whitespace
+    (some MOABB datasets label channels like 'C3.' or 'Fc5.')."""
+    return name.strip().rstrip(".").upper()
+
+
+def _common_channel_names(dataset_channel_names, target_channels=None, n_shared=16):
+    """
+    Normalized names present in EVERY dataset's montage, ordered so that
+    channels in the canonical 16-target list come first (in that list's
+    order), then any other common channels alphabetically. Truncated to
+    n_shared if the intersection is larger than the shared width.
+    """
+    if target_channels is None:
+        target_channels = LSP_TARGET_CHANNELS_16
+    sets = [{_normalize_name(c) for c in names}
+            for names in dataset_channel_names.values()]
+    common = set.intersection(*sets) if sets else set()
+    canon_order = [_normalize_name(c) for c in target_channels]
+    ordered = [c for c in canon_order if c in common]
+    ordered += sorted(common - set(ordered))
+    return ordered[:n_shared]
+
+
+def _rigid_selection_matrix(channel_names, common, n_shared=16):
+    """
+    Fixed (n_shared, C_dataset) one-hot selector: row i picks the dataset
+    channel whose normalized name equals common[i]; rows past len(common)
+    stay all-zero. Channel ORDER in channel_names must match the cached X.
+    """
+    index = {_normalize_name(c): i for i, c in enumerate(channel_names)}
+    W = torch.zeros(n_shared, len(channel_names))
+    for row, name in enumerate(common):
+        W[row, index[name]] = 1.0
+    return W
+
+
 class LSPLayer(nn.Module):
     """
     One dataset's LSP: a trainable (16, C_dataset) linear channel mixer.
@@ -210,13 +271,26 @@ class LSPLayer(nn.Module):
 
     x: (C_dataset, T) or (B, C_dataset, T)
     returns: (16, T) or (B, 16, T)
+
+    rigid_common: None (default) = normal learned LSP. A list of normalized
+    common channel names = RIGID mode (v3.6 fallback): W is a fixed one-hot
+    selection buffer, not trained. See module docstring.
     """
 
-    def __init__(self, channel_names, n_shared=16, sigma_frac=0.3, use_spatial_init=True):
+    def __init__(self, channel_names, n_shared=16, sigma_frac=0.3,
+                 use_spatial_init=True, rigid_common=None):
         super().__init__()
         self.channel_names = channel_names
         self.c_dataset = len(channel_names)
         self.n_shared = n_shared
+        self.rigid = rigid_common is not None
+
+        if self.rigid:
+            # Buffer (not Parameter): keeps the "W" state_dict key but is
+            # excluded from .parameters(), so the optimizer never sees it.
+            self.register_buffer(
+                "W", _rigid_selection_matrix(channel_names, rigid_common, n_shared))
+            return
 
         if use_spatial_init:
             init_weights = _gaussian_init_weights(
@@ -239,7 +313,8 @@ class LSPLayer(nn.Module):
         return torch.matmul(self.W, x)
 
     def param_count(self):
-        return self.W.numel()
+        # TRAINABLE parameters only: a rigid layer has none.
+        return 0 if self.rigid else self.W.numel()
 
 
 class LSPBank(nn.Module):
@@ -247,8 +322,9 @@ class LSPBank(nn.Module):
     Holds one LSPLayer per dataset. Spec Section 4: "~1K params total,
     trained" across ALL datasets combined — with n_shared=16, a dataset
     contributes 16 * C_dataset params, so e.g. 16*22 (bci_iv_2a) +
-    16*3 (bci_iv_2b) + 16*62 (openbmi) + 16*64 (physionet) = 2,432
-    params total. That's above the spec's "~1K" figure — flag this to
+    16*3 (bci_iv_2b) + 16*62 (openbmi) + 16*64 (physionet) = 2,416
+    params total (16 * 151 channels; an earlier version of this docstring said
+    2,432, which was an arithmetic slip). That's above the spec's "~1K" figure — flag this to
     whoever wrote spec Section 4, since it's a real discrepancy, not
     just rounding. Possible resolutions: spec's ~1K estimate assumed
     fewer/smaller datasets, or a shared low-rank factorization instead
@@ -257,18 +333,49 @@ class LSPBank(nn.Module):
     describes; revisit if the param budget turns out to matter.
     """
 
-    def __init__(self, dataset_channel_names, n_shared=16, sigma_frac=0.3):
+    def __init__(self, dataset_channel_names, n_shared=16, sigma_frac=0.3,
+                 rigid_intersection=False):
         """
         dataset_channel_names: dict {dataset_name: [channel_name, ...]}
             ORDER of each list must match the channel order in that
             dataset's cached 'X' arrays exactly.
+        rigid_intersection: v3.6 one-flag fallback. False (default) = the
+            learned, spatially-initialised LSP. True = fixed channel
+            intersection across all datasets in this bank, nothing trained.
         """
         super().__init__()
         self.n_shared = n_shared
-        self.layers = nn.ModuleDict({
-            ds: LSPLayer(names, n_shared=n_shared, sigma_frac=sigma_frac)
-            for ds, names in dataset_channel_names.items()
-        })
+        self.rigid_intersection = rigid_intersection
+
+        if rigid_intersection:
+            self.common_channels = _common_channel_names(
+                dataset_channel_names, n_shared=n_shared)
+            if not self.common_channels:
+                raise ValueError(
+                    "rigid_intersection=True but the datasets share no channel "
+                    "names: " + str({k: len(v) for k, v in dataset_channel_names.items()})
+                    + ". Check naming (case, trailing dots) or drop a dataset.")
+            print(f"[lsp] RIGID intersection mode: {len(self.common_channels)} common "
+                  f"channel(s) {self.common_channels}; remaining "
+                  f"{n_shared - len(self.common_channels)} of {n_shared} shared "
+                  f"channels are zero. No LSP parameters are trained.")
+            self.layers = nn.ModuleDict({
+                ds: LSPLayer(names, n_shared=n_shared, rigid_common=self.common_channels)
+                for ds, names in dataset_channel_names.items()
+            })
+        else:
+            self.common_channels = None
+            self.layers = nn.ModuleDict({
+                ds: LSPLayer(names, n_shared=n_shared, sigma_frac=sigma_frac)
+                for ds, names in dataset_channel_names.items()
+            })
+
+    def config(self):
+        """Small dict to store in the checkpoint so downstream code knows
+        which LSP mode produced it."""
+        return {"rigid_intersection": self.rigid_intersection,
+                "common_channels": self.common_channels,
+                "n_shared": self.n_shared}
 
     def forward(self, x, dataset_name):
         return self.layers[dataset_name](x)
@@ -319,3 +426,29 @@ if __name__ == "__main__":
         print(f"{ds_key} batched: input {tuple(x_batch.shape)} -> "
               f"output {tuple(out_batch.shape)} (expect (8, 16, 1001))")
         
+
+    # ------------------------------------------------------------------
+    # v3.6: rigid channel-intersection mode checks
+    # ------------------------------------------------------------------
+    print("\n--- rigid_intersection=True ---")
+    rigid = LSPBank(DATASET_CHANNEL_NAMES, n_shared=16, rigid_intersection=True)
+    assert rigid.total_param_count() == 0, "rigid LSP must have no trainable params"
+    assert len(list(rigid.parameters())) == 0, "rigid LSP must expose no Parameters"
+    assert rigid.common_channels == ["C3", "CZ", "C4"], rigid.common_channels
+    print(f"config: {rigid.config()}")
+
+    # Output row 0/1/2 must equal the raw C3/Cz/C4 rows; rows 3..15 must be zero.
+    names_2a = DATASET_CHANNEL_NAMES["bci_iv_2a"]
+    x = torch.randn(4, len(names_2a), 500)
+    y = rigid(x, "bci_iv_2a")
+    assert y.shape == (4, 16, 500)
+    for row, nm in enumerate(["C3", "Cz", "C4"]):
+        assert torch.equal(y[:, row], x[:, names_2a.index(nm)]), nm
+    assert torch.count_nonzero(y[:, 3:]) == 0
+    print("rigid mode: selected rows match raw channels, other rows are zero. OK")
+
+    # Default mode must be unchanged: same state_dict keys as before.
+    keys = list(bank.state_dict().keys())
+    assert keys == ["layers.bci_iv_2a.W", "layers.bci_iv_2b.W"], keys
+    assert list(rigid.state_dict().keys()) == keys
+    print("state_dict key names identical in both modes. OK")

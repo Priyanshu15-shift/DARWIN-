@@ -4,7 +4,9 @@ MOABB-loaded data (resampling and epoch extraction are already handled by
 data_loader.py via the MotorImagery paradigm).
 
 Pipeline order, matching the finalized spec:
-    ... (resample, CAR, notch -- see note below) ...
+    ... (resample -- handled upstream in data_loader.py) ...
+    -> CAR (common average reference, per-epoch)
+    -> Notch filtering (mains + harmonics)
     -> MAD artifact clipping (per-epoch, robust, logs % clipped)
     -> Robust amplitude norm (per-epoch median/MAD, logs pre-norm stats)
     -> [LSP happens next, in a separate module -- not yet built]
@@ -13,14 +15,50 @@ Note on CAR and notch filtering: for full rigor these should be applied at
 the raw, pre-epoch level (cleaner filtering, no edge artifacts at epoch
 boundaries). MOABB's default paradigm does not expose raw-level CAR/notch
 hooks without a custom paradigm subclass. For this first working version,
-we apply notch filtering at the epoch level via scipy, which is close
+we apply both CAR and notch filtering at the epoch level, which is close
 enough to unblock Phase 0 development -- upgrading to raw-level CAR/notch
 is a reasonable, low-risk refinement to make once the rest of the pipeline
 is running end to end, not a blocker to starting.
+
+FIX LOGGED: an earlier version of this module's docstring promised CAR as
+part of the pipeline ("Raw EEG -> CAR+MAD -> LSP -> Encoder" per the
+blueprint) but the actual preprocess() chain never called it -- notch,
+MAD clip, and amplitude norm ran on un-referenced data. car_reference()
+below is the fix; preprocess() now calls it first, matching the pipeline
+order documented above and in the blueprint.
 """
 
 import numpy as np
 from scipy import signal
+
+
+def car_reference(X):
+    """
+    Common Average Reference, applied per-epoch: subtracts each epoch's
+    across-channel mean (at every timepoint) from every channel. This is
+    the piece that was documented in this module's own pipeline-order
+    docstring and in the blueprint ("Raw EEG -> CAR+MAD -> LSP ->
+    Encoder") but never actually implemented -- preprocess() previously
+    ran notch/MAD-clip/amplitude-norm directly on amplifier-referenced
+    data.
+
+    Per-epoch (not per-recording/raw-level) CAR is a deliberate scope
+    choice, not full rigor: raw-level CAR before epoching would avoid
+    any epoch-boundary edge effects, but MOABB's default paradigm here
+    doesn't expose a raw-level hook without a custom paradigm subclass
+    (see module docstring). Per-epoch CAR is the same math applied at a
+    coarser grain and is enough to unblock the rest of the pipeline.
+
+    X : np.ndarray, shape (n_epochs, n_channels, n_times)
+
+    Returns
+    -------
+    X_car : np.ndarray, same shape as input. For every epoch and every
+        timepoint, the mean across channels has been subtracted, so each
+        timepoint's channel values sum to (approximately) zero.
+    """
+    channel_mean = X.mean(axis=1, keepdims=True)  # (n_epochs, 1, n_times)
+    return X - channel_mean
 
 
 def notch_filter_epochs(X, sfreq, base_freq=50.0, n_harmonics=2, bandwidth=4.0):
@@ -85,7 +123,7 @@ def robust_amplitude_norm(X):
     return normed, med, mad
 
 
-def preprocess(X, sfreq, notch_base_freq=50.0, n_mad_clip=5.0):
+def preprocess(X, sfreq, notch_base_freq=50.0, n_mad_clip=5.0, apply_car=True):
     """
     Run the full epoch-level pipeline on a batch of epochs from one dataset.
 
@@ -94,6 +132,11 @@ def preprocess(X, sfreq, notch_base_freq=50.0, n_mad_clip=5.0):
         TARGET_SFREQ from data_loader.py by this point)
     notch_base_freq : 50.0 or 60.0 depending on the dataset's country of
         origin -- pass explicitly per dataset, do not hardcode
+    apply_car : bool, default True. Runs car_reference() first, matching
+        the documented "CAR -> notch -> MAD clip -> amplitude norm"
+        order. Exposed as a flag (rather than hardcoded) so an ablation
+        can isolate CAR's effect if that's ever useful, but the default
+        matches the spec and should stay on for any real run.
 
     Returns
     -------
@@ -101,7 +144,8 @@ def preprocess(X, sfreq, notch_base_freq=50.0, n_mad_clip=5.0):
     diagnostics : dict with 'pct_clipped_per_epoch', 'pre_norm_median',
         'pre_norm_mad' -- log these per epoch as recommended in the spec
     """
-    X_notched = notch_filter_epochs(X, sfreq, base_freq=notch_base_freq)
+    X_referenced = car_reference(X) if apply_car else X
+    X_notched = notch_filter_epochs(X_referenced, sfreq, base_freq=notch_base_freq)
     X_clipped, pct_clipped = mad_clip_epoch(X_notched, n_mad=n_mad_clip)
     X_normed, pre_norm_med, pre_norm_mad = robust_amplitude_norm(X_clipped)
 
@@ -125,3 +169,12 @@ if __name__ == "__main__":
     print("Pct clipped per epoch:", diag["pct_clipped_per_epoch"])
     assert X_out.shape == fake_X.shape
     print("Smoke test passed.")
+
+    # Sanity check CAR itself in isolation: after car_reference, every
+    # epoch's per-timepoint channel mean should be ~0.
+    car_out = car_reference(fake_X)
+    max_residual_mean = np.abs(car_out.mean(axis=1)).max()
+    print(f"CAR check: max |per-timepoint channel mean| after CAR = "
+          f"{max_residual_mean:.2e} (expect ~0)")
+    assert max_residual_mean < 1e-10
+    print("CAR smoke test passed.")
