@@ -1,0 +1,457 @@
+{
+  "checkpoint": "phase0_untrained_bncal.pt",
+  "space": "pre_projection_64d",
+  "split": "subject_disjoint_auto",
+  "probe_sessions": "train",
+  "train_sessions": {
+    "bci_iv_2a": [
+      "0train"
+    ],
+    "bci_iv_2b": [
+      "0train",
+      "1train",
+      "2train"
+    ]
+  },
+  "verdict_metric": "balanced",
+  "results": [
+    {
+      "dataset": "bci_iv_2a",
+      "num_classes": 4,
+      "chance": 0.25,
+      "threshold": 0.3,
+      "cv": "loso",
+      "n_folds": 9,
+      "verdict_metric": "balanced",
+      "score": 0.3256172839506173,
+      "score_std": 0.05356058315817866,
+      "score_sem": 0.017853527719392887,
+      "acc": 0.3256172839506173,
+      "acc_std": 0.053560583158178646,
+      "bal_acc": 0.3256172839506173,
+      "bal_acc_std": 0.05356058315817866,
+      "majority_acc": 0.25,
+      "class_counts": {
+        "feet": 648,
+        "left_hand": 648,
+        "right_hand": 648,
+        "tongue": 648
+      },
+      "pooled_recall": {
+        "feet": 0.32253086419753085,
+        "left_hand": 0.3626543209876543,
+        "right_hand": 0.3101851851851852,
+        "tongue": 0.30709876543209874
+      },
+      "folds": [
+        {
+          "val_subjects": [
+            "1"
+          ],
+          "n_val": 288,
+          "acc": 0.3819444444444444,
+          "bal_acc": 0.3819444444444445,
+          "majority_acc": 0.25,
+          "majority_bal_acc": 0.25
+        },
+        {
+          "val_subjects": [
+            "2"
+          ],
+          "n_val": 288,
+          "acc": 0.2465277777777778,
+          "bal_acc": 0.2465277777777778,
+          "majority_acc": 0.25,
+          "majority_bal_acc": 0.25
+        },
+        {
+          "val_subjects": [
+            "3"
+          ],
+          "n_val": 288,
+          "acc": 0.3576388888888889,
+          "bal_acc": 0.3576388888888889,
+          "majority_acc": 0.25,
+          "majority_bal_acc": 0.25
+        },
+        {
+          "val_subjects": [
+            "4"
+          ],
+          "n_val": 288,
+          "acc": 0.3229166666666667,
+          "bal_acc": 0.3229166666666667,
+          "majority_acc": 0.25,
+          "majority_bal_acc": 0.25
+        },
+        {
+          "val_subjects": [
+            "5"
+          ],
+          "n_val": 288,
+          "acc": 0.2569444444444444,
+          "bal_acc": 0.2569444444444444,
+          "majority_acc": 0.25,
+          "majority_bal_acc": 0.25
+        },
+        {
+          "val_subjects": [
+            "6"
+          ],
+          "n_val": 288,
+          "acc": 0.3541666666666667,
+          "bal_acc": 0.3541666666666667,
+          "majority_acc": 0.25,
+          "majority_bal_acc": 0.25
+        },
+        {
+          "val_subjects": [
+            "7"
+          ],
+          "n_val": 288,
+          "acc": 0.2708333333333333,
+          "bal_acc": 0.2708333333333333,
+          "majority_acc": 0.25,
+          "majority_bal_acc": 0.25
+        },
+        {
+          "val_subjects": [
+            "8"
+          ],
+          "n_val": 288,
+          "acc": 0.3645833333333333,
+          "bal_acc": 0.36458333333333337,
+          "majority_acc": 0.25,
+          "majority_bal_acc": 0.25
+        },
+        {
+          "val_subjects": [
+            "9"
+          ],
+          "n_val": 288,
+          "acc": 0.375,
+          "bal_acc": 0.375,
+          "majority_acc": 0.25,
+          "majority_bal_acc": 0.25
+        }
+      ],
+      "n_subjects": 9,
+      "n_epochs": 2592,
+      "passed": true,
+      "borderline": false
+    },
+    {
+      "dataset": "bci_iv_2b",
+      "num_classes": 2,
+      "chance": 0.5,
+      "threshold": 0.55,
+      "cv": "loso",
+      "n_folds": 9,
+      "verdict_metric": "balanced",
+      "score": 0.5983261183261184,
+      "score_std": 0.08450456966285189,
+      "score_sem": 0.028168189887617295,
+      "acc": 0.5983261183261184,
+      "acc_std": 0.08450456966285189,
+      "bal_acc": 0.5983261183261184,
+      "bal_acc_std": 0.08450456966285189,
+      "majority_acc": 0.5,
+      "class_counts": {
+        "left_hand": 1840,
+        "right_hand": 1840
+      },
+      "pooled_recall": {
+        "left_hand": 0.5831521739130435,
+        "right_hand": 0.6157608695652174
+      },
+      "folds": [
+        {
+          "val_subjects": [
+            "1"
+          ],
+          "n_val": 400,
+          "acc": 0.585,
+          "bal_acc": 0.585,
+          "majority_acc": 0.5,
+          "majority_bal_acc": 0.5
+        },
+        {
+          "val_subjects": [
+            "2"
+          ],
+          "n_val": 400,
+          "acc": 0.5175,
+          "bal_acc": 0.5175000000000001,
+          "majority_acc": 0.5,
+          "majority_bal_acc": 0.5
+        },
+        {
+          "val_subjects": [
+            "3"
+          ],
+          "n_val": 400,
+          "acc": 0.5475,
+          "bal_acc": 0.5475,
+          "majority_acc": 0.5,
+          "majority_bal_acc": 0.5
+        },
+        {
+          "val_subjects": [
+            "4"
+          ],
+          "n_val": 420,
+          "acc": 0.7333333333333333,
+          "bal_acc": 0.7333333333333334,
+          "majority_acc": 0.5,
+          "majority_bal_acc": 0.5
+        },
+        {
+          "val_subjects": [
+            "5"
+          ],
+          "n_val": 420,
+          "acc": 0.6452380952380953,
+          "bal_acc": 0.6452380952380953,
+          "majority_acc": 0.5,
+          "majority_bal_acc": 0.5
+        },
+        {
+          "val_subjects": [
+            "6"
+          ],
+          "n_val": 400,
+          "acc": 0.4525,
+          "bal_acc": 0.4525,
+          "majority_acc": 0.5,
+          "majority_bal_acc": 0.5
+        },
+        {
+          "val_subjects": [
+            "7"
+          ],
+          "n_val": 400,
+          "acc": 0.62,
+          "bal_acc": 0.62,
+          "majority_acc": 0.5,
+          "majority_bal_acc": 0.5
+        },
+        {
+          "val_subjects": [
+            "8"
+          ],
+          "n_val": 440,
+          "acc": 0.6113636363636363,
+          "bal_acc": 0.6113636363636363,
+          "majority_acc": 0.5,
+          "majority_bal_acc": 0.5
+        },
+        {
+          "val_subjects": [
+            "9"
+          ],
+          "n_val": 400,
+          "acc": 0.6725,
+          "bal_acc": 0.6725,
+          "majority_acc": 0.5,
+          "majority_bal_acc": 0.5
+        }
+      ],
+      "n_subjects": 9,
+      "n_epochs": 3680,
+      "passed": true,
+      "borderline": false
+    },
+    {
+      "dataset": "physionet",
+      "num_classes": 5,
+      "chance": 0.2,
+      "threshold": 0.25,
+      "cv": "random",
+      "n_folds": 5,
+      "verdict_metric": "balanced",
+      "score": 0.292998594279761,
+      "score_std": 0.0160330130062163,
+      "score_sem": 0.0071701813932075805,
+      "acc": 0.3770220157233858,
+      "acc_std": 0.03589772621326102,
+      "bal_acc": 0.292998594279761,
+      "bal_acc_std": 0.0160330130062163,
+      "majority_acc": 0.4828380660163737,
+      "class_counts": {
+        "feet": 2455,
+        "hands": 2465,
+        "left_hand": 2480,
+        "rest": 9184,
+        "right_hand": 2438
+      },
+      "pooled_recall": {
+        "feet": 0.22329317269076304,
+        "hands": 0.16586151368760063,
+        "left_hand": 0.2955367913148372,
+        "rest": 0.529829851389188,
+        "right_hand": 0.24949698189134809
+      },
+      "folds": [
+        {
+          "val_subjects": [
+            "100",
+            "105",
+            "106",
+            "108",
+            "12",
+            "15",
+            "20",
+            "22",
+            "41",
+            "48",
+            "5",
+            "55",
+            "62",
+            "67",
+            "69",
+            "7",
+            "77",
+            "78",
+            "79",
+            "91",
+            "95",
+            "99"
+          ],
+          "n_val": 3792,
+          "acc": 0.4240506329113924,
+          "bal_acc": 0.3055640418268855,
+          "majority_acc": 0.4825949367088608,
+          "majority_bal_acc": 0.2
+        },
+        {
+          "val_subjects": [
+            "100",
+            "16",
+            "39",
+            "44",
+            "5",
+            "50",
+            "51",
+            "53",
+            "57",
+            "60",
+            "8",
+            "80",
+            "81",
+            "82",
+            "84",
+            "87",
+            "89",
+            "91",
+            "92",
+            "93",
+            "96",
+            "99"
+          ],
+          "n_val": 3840,
+          "acc": 0.37057291666666664,
+          "bal_acc": 0.3028671434803244,
+          "majority_acc": 0.4828125,
+          "majority_bal_acc": 0.2
+        },
+        {
+          "val_subjects": [
+            "1",
+            "100",
+            "12",
+            "13",
+            "15",
+            "2",
+            "22",
+            "23",
+            "25",
+            "26",
+            "27",
+            "28",
+            "32",
+            "33",
+            "40",
+            "6",
+            "76",
+            "77",
+            "88",
+            "89",
+            "9",
+            "92"
+          ],
+          "n_val": 3888,
+          "acc": 0.35622427983539096,
+          "bal_acc": 0.28274323358374504,
+          "majority_acc": 0.48302469135802467,
+          "majority_bal_acc": 0.2
+        },
+        {
+          "val_subjects": [
+            "103",
+            "104",
+            "107",
+            "11",
+            "14",
+            "21",
+            "23",
+            "37",
+            "39",
+            "46",
+            "50",
+            "56",
+            "61",
+            "73",
+            "75",
+            "83",
+            "84",
+            "88",
+            "90",
+            "92",
+            "95",
+            "99"
+          ],
+          "n_val": 3920,
+          "acc": 0.33341836734693875,
+          "bal_acc": 0.26968111213522683,
+          "majority_acc": 0.48316326530612247,
+          "majority_bal_acc": 0.2
+        },
+        {
+          "val_subjects": [
+            "100",
+            "103",
+            "108",
+            "12",
+            "15",
+            "18",
+            "19",
+            "22",
+            "24",
+            "27",
+            "32",
+            "43",
+            "49",
+            "56",
+            "62",
+            "7",
+            "70",
+            "76",
+            "77",
+            "80",
+            "94",
+            "96"
+          ],
+          "n_val": 3792,
+          "acc": 0.4008438818565401,
+          "bal_acc": 0.304137440372623,
+          "majority_acc": 0.4825949367088608,
+          "majority_bal_acc": 0.2
+        }
+      ],
+      "n_subjects": 109,
+      "n_epochs": 19022,
+      "passed": true,
+      "borderline": false
+    }
+  ]
+}

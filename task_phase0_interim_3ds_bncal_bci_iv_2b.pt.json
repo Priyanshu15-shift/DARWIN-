@@ -1,0 +1,140 @@
+{
+  "checkpoint": "phase0_interim_3ds_bncal_bci_iv_2b.pt",
+  "space": "pre_projection_64d",
+  "split": "subject_disjoint_auto",
+  "probe_sessions": "train",
+  "train_sessions": {
+    "bci_iv_2a": [
+      "0train"
+    ],
+    "bci_iv_2b": [
+      "0train",
+      "1train",
+      "2train"
+    ]
+  },
+  "verdict_metric": "balanced",
+  "results": [
+    {
+      "dataset": "bci_iv_2b",
+      "num_classes": 2,
+      "chance": 0.5,
+      "threshold": 0.55,
+      "cv": "loso",
+      "n_folds": 9,
+      "verdict_metric": "balanced",
+      "score": 0.6013468013468013,
+      "score_std": 0.09707994224551686,
+      "score_sem": 0.03235998074850562,
+      "acc": 0.6013468013468013,
+      "acc_std": 0.09707994224551687,
+      "bal_acc": 0.6013468013468013,
+      "bal_acc_std": 0.09707994224551686,
+      "majority_acc": 0.5,
+      "class_counts": {
+        "left_hand": 1840,
+        "right_hand": 1840
+      },
+      "pooled_recall": {
+        "left_hand": 0.5619565217391305,
+        "right_hand": 0.6418478260869566
+      },
+      "folds": [
+        {
+          "val_subjects": [
+            "1"
+          ],
+          "n_val": 400,
+          "acc": 0.6775,
+          "bal_acc": 0.6775,
+          "majority_acc": 0.5,
+          "majority_bal_acc": 0.5
+        },
+        {
+          "val_subjects": [
+            "2"
+          ],
+          "n_val": 400,
+          "acc": 0.48,
+          "bal_acc": 0.48,
+          "majority_acc": 0.5,
+          "majority_bal_acc": 0.5
+        },
+        {
+          "val_subjects": [
+            "3"
+          ],
+          "n_val": 400,
+          "acc": 0.4725,
+          "bal_acc": 0.4725,
+          "majority_acc": 0.5,
+          "majority_bal_acc": 0.5
+        },
+        {
+          "val_subjects": [
+            "4"
+          ],
+          "n_val": 420,
+          "acc": 0.7023809523809523,
+          "bal_acc": 0.7023809523809523,
+          "majority_acc": 0.5,
+          "majority_bal_acc": 0.5
+        },
+        {
+          "val_subjects": [
+            "5"
+          ],
+          "n_val": 420,
+          "acc": 0.6642857142857143,
+          "bal_acc": 0.6642857142857143,
+          "majority_acc": 0.5,
+          "majority_bal_acc": 0.5
+        },
+        {
+          "val_subjects": [
+            "6"
+          ],
+          "n_val": 400,
+          "acc": 0.51,
+          "bal_acc": 0.51,
+          "majority_acc": 0.5,
+          "majority_bal_acc": 0.5
+        },
+        {
+          "val_subjects": [
+            "7"
+          ],
+          "n_val": 400,
+          "acc": 0.6125,
+          "bal_acc": 0.6125,
+          "majority_acc": 0.5,
+          "majority_bal_acc": 0.5
+        },
+        {
+          "val_subjects": [
+            "8"
+          ],
+          "n_val": 440,
+          "acc": 0.5704545454545454,
+          "bal_acc": 0.5704545454545454,
+          "majority_acc": 0.5,
+          "majority_bal_acc": 0.5
+        },
+        {
+          "val_subjects": [
+            "9"
+          ],
+          "n_val": 400,
+          "acc": 0.7225,
+          "bal_acc": 0.7224999999999999,
+          "majority_acc": 0.5,
+          "majority_bal_acc": 0.5
+        }
+      ],
+      "n_subjects": 9,
+      "n_epochs": 3680,
+      "passed": true,
+      "borderline": false
+    }
+  ]
+}

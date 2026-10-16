@@ -1,7 +1,8 @@
 """
 losses.py
 
-InfoNCE loss for DARWIN Phase 0, per spec v3 Section 5:
+InfoNCE loss for DARWIN Phase 0 (spec v3 Section 5, carried unchanged into
+the rev A / v3.6 specification):
 
     L_pretrain = L_InfoNCE with subject-balanced negative sampling.
     - Two augmented views per epoch (via augment() called twice).
@@ -11,17 +12,30 @@ InfoNCE loss for DARWIN Phase 0, per spec v3 Section 5:
     - This explicitly prevents the encoder from exploiting subject
       identity as the sole discriminative feature.
 
-CORRECTION (post Gate-1 probe results -- read before touching this file):
+CORRECTION (post early probe results -- read before touching this file):
 An earlier version of this module excluded same-subject-different-clip
-pairs from the negative pool entirely, reasoning that "spec Section 1
-wants subject identity to be linearly separable (Gate 1), so two clips
-from the same subject should NOT be pushed apart." That reasoning had
-Gate 1 backwards. Per Objective 2, Gate 1 requires HIGH task/class
-decodability alongside LOW subject-ID leakage -- i.e. subject identity
-should NOT be easily linearly separable from the Phase 0 embeddings.
-(Worth re-confirming against the actual spec Section 1 text if there's
-ever doubt -- this correction is based on Objective 2's Gate 1
-definition, not a re-read of Section 1 itself.)
+pairs from the negative pool entirely, so two clips from the same subject
+were never pushed apart. That made subject identity a trivial shortcut. The
+rev A / v3.6 specification names exactly this outcome as a risk: "Phase 0
+learns a subject shortcut", detected by the G3 task probe being near chance,
+with the fallback "fix augmentation, delay Phase 1".
+
+WHAT THE SPEC ASKS FOR (rev A, section 9):
+    - G3 is a TASK probe only: a linear probe on the frozen, PRE-PROJECTION
+      64-d embeddings (encoder output, not the projection head) must reach
+      chance + 5 percentage points on a subject-disjoint split
+      (probe_task_decodability.py).
+    - The subject-ID probe is a DIAGNOSTIC, never a gate
+      (probe_subject_leakage.py). A collapsed subject probe (near chance) is
+      a WARNING, because SSRS matches a new user to donor subjects by
+      embedding similarity and needs some subject structure to exist. A very
+      high subject probe on its own is informational: the concern is a high
+      subject-ID probe COMBINED with a near-chance task probe.
+    - The subject probe is plotted against the task probe for ablation 12
+      (Pareto).
+    So this loss does not try to drive subject-ID accuracy to chance. It only
+    removes the trivial shortcut; whether the balance is right is judged by
+    G3 plus the subject-ID and dataset-ID diagnostics.
 
 Excluding same-subject-different-clip pairs from the loss meant every
 single comparison this loss ever constructed reduced to "same subject"
@@ -34,7 +48,7 @@ structure, this made subject-identity clustering a trivial, fully-
 sufficient shortcut for satisfying the objective -- with zero
 counter-pressure against it. A real training run confirmed this: 40%
 task decodability (weak) alongside 97% subject-ID leakage (near-total),
-almost the opposite of what Gate 1 wants.
+i.e. the G3 failure signal.
 
 FIX: same-subject-different-clip pairs are now treated as ordinary
 negatives, same as cross-subject pairs (standard SimCLR-style InfoNCE,
@@ -78,11 +92,15 @@ def info_nce_subject_balanced(z1, z2, subject_ids, temperature=0.1):
     subject_ids: (B,) -- subject id (as an integer/hashable-turned-int
         tensor) for each anchor position. z1[i] and z2[i] share
         subject_ids[i] by construction, since they're two views of one
-        epoch from one subject.
+        epoch from one subject. NOTE: since the fix below, this function
+        only shape-checks subject_ids (only self-similarity is masked);
+        the argument is kept for the batch-ordering contract and for
+        diagnostics.
     temperature: NOT specified by spec v3 -- 0.1 is the standard
         SimCLR/contrastive-learning default, used here as a starting
-        point. Worth treating as a tunable hyperparameter if Gate 1/
-        Gate 2 results suggest the embedding space is too diffuse
+        point. Worth treating as a tunable hyperparameter if the G3 task
+        probe (or the subject-ID / dataset-ID diagnostics) suggests the
+        embedding space is too diffuse
         (raise temperature) or collapsing (lower it), rather than
         assuming 0.1 is correct for EEG data specifically.
 
@@ -119,9 +137,9 @@ def info_nce_subject_balanced(z1, z2, subject_ids, temperature=0.1):
     # every comparison this loss ever constructed reduced to "same
     # subject" (positive) vs. "different subject" (negative), making
     # subject-identity clustering a trivial, fully-sufficient solution
-    # to the objective with zero counter-pressure against it. Gate 1
-    # wants LOW subject-ID leakage, so same-subject-different-clip
-    # pairs need to be pushed apart just like cross-subject pairs --
+    # to the objective with zero counter-pressure against it. G3
+    # needs task structure to survive, so same-subject-different-clip
+    # pairs must be pushed apart just like cross-subject pairs --
     # otherwise nothing in the loss ever requires the encoder to
     # represent anything beyond subject identity.
     self_mask = torch.eye(2 * B, dtype=torch.bool, device=z.device)

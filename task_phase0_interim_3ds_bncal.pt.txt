@@ -1,0 +1,137 @@
+C:\Users\Admin\DARWIN\phase0\lsp.py:112: FutureWarning: Montage name 'standard_1020' is deprecated and will be removed in MNE 1.14. Use 'colin27_1020' instead.
+  montage = mne.channels.make_standard_montage("standard_1020")
+C:\Users\Admin\DARWIN\phase0\lsp.py:112: FutureWarning: Montage name 'standard_1020' is deprecated and will be removed in MNE 1.14. Use 'colin27_1020' instead.
+  montage = mne.channels.make_standard_montage("standard_1020")
+C:\Users\Admin\DARWIN\phase0\lsp.py:112: FutureWarning: Montage name 'standard_1020' is deprecated and will be removed in MNE 1.14. Use 'colin27_1020' instead.
+  montage = mne.channels.make_standard_montage("standard_1020")
+C:\Users\Admin\DARWIN\phase0\lsp.py:112: FutureWarning: Montage name 'standard_1020' is deprecated and will be removed in MNE 1.14. Use 'colin27_1020' instead.
+  montage = mne.channels.make_standard_montage("standard_1020")
+C:\Users\Admin\DARWIN\phase0\lsp.py:112: FutureWarning: Montage name 'standard_1020' is deprecated and will be removed in MNE 1.14. Use 'colin27_1020' instead.
+  montage = mne.channels.make_standard_montage("standard_1020")
+C:\Users\Admin\DARWIN\phase0\lsp.py:112: FutureWarning: Montage name 'standard_1020' is deprecated and will be removed in MNE 1.14. Use 'colin27_1020' instead.
+  montage = mne.channels.make_standard_montage("standard_1020")
+Using device: cuda
+Using cache_dir: cache\v2_bandpass0.5-48_car
+Loaded checkpoint with datasets ['bci_iv_2a', 'bci_iv_2b', 'physionet'], final Phase 0 loss: 1.1525941648060762
+Probe sessions: {'bci_iv_2a': ['0train'], 'bci_iv_2b': ['0train', '1train', '2train']} (checkpoint train_sessions: {'bci_iv_2a': ['0train'], 'bci_iv_2b': ['0train', '1train', '2train']})
+Probing PRE-PROJECTION 64-d encoder embeddings (projection head not used).
+
+============================================================
+G3 task probe -- bci_iv_2a
+============================================================
+[probe] Discovered 4 classes in 'bci_iv_2a': {'feet': 0, 'left_hand': 1, 'right_hand': 2, 'tongue': 3}
+[sampler] bci_iv_2a: sessions ['0train'] kept -> 2592/5184 epochs, 9 subjects (dropped labels: ['1test'])
+[sampler] total epochs indexed: 2592
+Extracting pre-projection embeddings (all subjects, once)...
+embeddings: (2592, 64) from 9 subjects
+Class counts (all probed epochs):
+  feet            648  (25.0%)
+  left_hand       648  (25.0%)
+  right_hand      648  (25.0%)
+  tongue          648  (25.0%)
+Majority-class share: 0.2500
+
+CV: loso, 9 subject-disjoint folds (standardize=True, class_weight=True)
+  fold  1/9  val=1              n=  288  acc=0.351  bal_acc=0.351  majority_acc=0.250
+  fold  2/9  val=2              n=  288  acc=0.274  bal_acc=0.274  majority_acc=0.250
+  fold  3/9  val=3              n=  288  acc=0.319  bal_acc=0.319  majority_acc=0.250
+  fold  4/9  val=4              n=  288  acc=0.316  bal_acc=0.316  majority_acc=0.250
+  fold  5/9  val=5              n=  288  acc=0.243  bal_acc=0.243  majority_acc=0.250
+  fold  6/9  val=6              n=  288  acc=0.361  bal_acc=0.361  majority_acc=0.250
+  fold  7/9  val=7              n=  288  acc=0.253  bal_acc=0.253  majority_acc=0.250
+  fold  8/9  val=8              n=  288  acc=0.351  bal_acc=0.351  majority_acc=0.250
+  fold  9/9  val=9              n=  288  acc=0.358  bal_acc=0.358  majority_acc=0.250
+
+--- bci_iv_2a: G3 task probe (9 folds, loso) ---
+Classes:                 4
+Chance level:            0.2500
+G3 threshold:            0.3000 (chance + 5 pp)
+Accuracy:                0.3140 +/- 0.0463
+Balanced accuracy:       0.3140 +/- 0.0463
+Majority-class acc:      0.2500  (predict the train majority class)
+Accuracy over majority:  +0.0640
+Verdict metric:          balanced = 0.3140 (SEM 0.0154)
+Pooled per-class recall: feet=0.282  left_hand=0.296  right_hand=0.390  tongue=0.287
+G3 (bci_iv_2a): PASS  [borderline: within 1 SEM of the threshold]
+
+============================================================
+G3 task probe -- bci_iv_2b
+============================================================
+[probe] Discovered 2 classes in 'bci_iv_2b': {'left_hand': 0, 'right_hand': 1}
+[sampler] bci_iv_2b: sessions ['0train', '1train', '2train'] kept -> 3680/6520 epochs, 9 subjects (dropped labels: ['3test', '4test'])
+[sampler] total epochs indexed: 3680
+Extracting pre-projection embeddings (all subjects, once)...
+embeddings: (3680, 64) from 9 subjects
+Class counts (all probed epochs):
+  left_hand      1840  (50.0%)
+  right_hand     1840  (50.0%)
+Majority-class share: 0.5000
+
+CV: loso, 9 subject-disjoint folds (standardize=True, class_weight=True)
+  fold  1/9  val=1              n=  400  acc=0.642  bal_acc=0.643  majority_acc=0.500
+  fold  2/9  val=2              n=  400  acc=0.517  bal_acc=0.518  majority_acc=0.500
+  fold  3/9  val=3              n=  400  acc=0.512  bal_acc=0.513  majority_acc=0.500
+  fold  4/9  val=4              n=  420  acc=0.738  bal_acc=0.738  majority_acc=0.500
+  fold  5/9  val=5              n=  420  acc=0.669  bal_acc=0.669  majority_acc=0.500
+  fold  6/9  val=6              n=  400  acc=0.495  bal_acc=0.495  majority_acc=0.500
+  fold  7/9  val=7              n=  400  acc=0.640  bal_acc=0.640  majority_acc=0.500
+  fold  8/9  val=8              n=  440  acc=0.550  bal_acc=0.550  majority_acc=0.500
+  fold  9/9  val=9              n=  400  acc=0.703  bal_acc=0.703  majority_acc=0.500
+
+--- bci_iv_2b: G3 task probe (9 folds, loso) ---
+Classes:                 2
+Chance level:            0.5000
+G3 threshold:            0.5500 (chance + 5 pp)
+Accuracy:                0.6075 +/- 0.0903
+Balanced accuracy:       0.6075 +/- 0.0903
+Majority-class acc:      0.5000  (predict the train majority class)
+Accuracy over majority:  +0.1075
+Verdict metric:          balanced = 0.6075 (SEM 0.0301)
+Pooled per-class recall: left_hand=0.617  right_hand=0.599
+G3 (bci_iv_2b): PASS
+
+============================================================
+G3 task probe -- physionet
+============================================================
+[probe] Discovered 5 classes in 'physionet': {'feet': 0, 'hands': 1, 'left_hand': 2, 'rest': 3, 'right_hand': 4}
+[sampler] physionet: all sessions kept (['0']) -> 19022 epochs, 109 subjects
+[sampler] total epochs indexed: 19022
+Extracting pre-projection embeddings (all subjects, once)...
+embeddings: (19022, 64) from 109 subjects
+Class counts (all probed epochs):
+  feet           2455  (12.9%)
+  hands          2465  (13.0%)
+  left_hand      2480  (13.0%)
+  rest           9184  (48.3%)
+  right_hand     2438  (12.8%)
+Majority-class share: 0.4828
+
+CV: random, 5 subject-disjoint folds (standardize=True, class_weight=True)
+  fold  1/5  val=100,105,106,108,12,15,20,22,41,48,5,55,62,67,69,7,77,78,79,91,95,99 n= 3792  acc=0.427  bal_acc=0.319  majority_acc=0.483
+  fold  2/5  val=100,16,39,44,5,50,51,53,57,60,8,80,81,82,84,87,89,91,92,93,96,99 n= 3840  acc=0.373  bal_acc=0.309  majority_acc=0.483
+  fold  3/5  val=1,100,12,13,15,2,22,23,25,26,27,28,32,33,40,6,76,77,88,89,9,92 n= 3888  acc=0.358  bal_acc=0.275  majority_acc=0.483
+  fold  4/5  val=103,104,107,11,14,21,23,37,39,46,50,56,61,73,75,83,84,88,90,92,95,99 n= 3920  acc=0.355  bal_acc=0.284  majority_acc=0.483
+  fold  5/5  val=100,103,108,12,15,18,19,22,24,27,32,43,49,56,62,7,70,76,77,80,94,96 n= 3792  acc=0.416  bal_acc=0.314  majority_acc=0.483
+
+--- physionet: G3 task probe (5 folds, random) ---
+Classes:                 5
+Chance level:            0.2000
+G3 threshold:            0.2500 (chance + 5 pp)
+Accuracy:                0.3858 +/- 0.0335
+Balanced accuracy:       0.3002 +/- 0.0195
+Majority-class acc:      0.4828  (predict the train majority class)
+Accuracy over majority:  -0.0971
+Verdict metric:          balanced = 0.3002 (SEM 0.0087)
+Pooled per-class recall: feet=0.288  hands=0.248  left_hand=0.203  rest=0.542  right_hand=0.219
+G3 (physionet): PASS
+
+============================================================
+G3 SUMMARY (task probe, pre-projection, subject-disjoint folds)
+============================================================
+  bci_iv_2a  balanced 0.3140 +/- 0.0463 vs threshold 0.3000 (chance 0.25, 4 classes, 9 loso folds; acc 0.314, majority 0.250) -> PASS  [borderline]
+  bci_iv_2b  balanced 0.6075 +/- 0.0903 vs threshold 0.5500 (chance 0.50, 2 classes, 9 loso folds; acc 0.607, majority 0.500) -> PASS
+  physionet  balanced 0.3002 +/- 0.0195 vs threshold 0.2500 (chance 0.20, 5 classes, 5 random folds; acc 0.386, majority 0.483) -> PASS
+
+G3: PASS (every probed dataset is at least chance + 5 pp).
+The subject-ID probe is a diagnostic only (not a gate): run probe_subject_leakage.py and plot it against this result for ablation 12.
+Wrote task_phase0_interim_3ds_bncal.pt.json

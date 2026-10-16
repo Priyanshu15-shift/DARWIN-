@@ -1,0 +1,144 @@
+{
+  "checkpoint": "phase0_interim_3ds_bncal_bci_iv_2a.pt",
+  "space": "pre_projection_64d",
+  "split": "subject_disjoint_auto",
+  "probe_sessions": "train",
+  "train_sessions": {
+    "bci_iv_2a": [
+      "0train"
+    ],
+    "bci_iv_2b": [
+      "0train",
+      "1train",
+      "2train"
+    ]
+  },
+  "verdict_metric": "balanced",
+  "results": [
+    {
+      "dataset": "bci_iv_2a",
+      "num_classes": 4,
+      "chance": 0.25,
+      "threshold": 0.3,
+      "cv": "loso",
+      "n_folds": 9,
+      "verdict_metric": "balanced",
+      "score": 0.31365740740740744,
+      "score_std": 0.055501275566478415,
+      "score_sem": 0.01850042518882614,
+      "acc": 0.31365740740740744,
+      "acc_std": 0.0555012755664784,
+      "bal_acc": 0.31365740740740744,
+      "bal_acc_std": 0.055501275566478415,
+      "majority_acc": 0.25,
+      "class_counts": {
+        "feet": 648,
+        "left_hand": 648,
+        "right_hand": 648,
+        "tongue": 648
+      },
+      "pooled_recall": {
+        "feet": 0.26851851851851855,
+        "left_hand": 0.25308641975308643,
+        "right_hand": 0.4305555555555556,
+        "tongue": 0.30246913580246915
+      },
+      "folds": [
+        {
+          "val_subjects": [
+            "1"
+          ],
+          "n_val": 288,
+          "acc": 0.34375,
+          "bal_acc": 0.34375,
+          "majority_acc": 0.25,
+          "majority_bal_acc": 0.25
+        },
+        {
+          "val_subjects": [
+            "2"
+          ],
+          "n_val": 288,
+          "acc": 0.2673611111111111,
+          "bal_acc": 0.2673611111111111,
+          "majority_acc": 0.25,
+          "majority_bal_acc": 0.25
+        },
+        {
+          "val_subjects": [
+            "3"
+          ],
+          "n_val": 288,
+          "acc": 0.2847222222222222,
+          "bal_acc": 0.2847222222222222,
+          "majority_acc": 0.25,
+          "majority_bal_acc": 0.25
+        },
+        {
+          "val_subjects": [
+            "4"
+          ],
+          "n_val": 288,
+          "acc": 0.3125,
+          "bal_acc": 0.3125,
+          "majority_acc": 0.25,
+          "majority_bal_acc": 0.25
+        },
+        {
+          "val_subjects": [
+            "5"
+          ],
+          "n_val": 288,
+          "acc": 0.2465277777777778,
+          "bal_acc": 0.24652777777777776,
+          "majority_acc": 0.25,
+          "majority_bal_acc": 0.25
+        },
+        {
+          "val_subjects": [
+            "6"
+          ],
+          "n_val": 288,
+          "acc": 0.3611111111111111,
+          "bal_acc": 0.36111111111111116,
+          "majority_acc": 0.25,
+          "majority_bal_acc": 0.25
+        },
+        {
+          "val_subjects": [
+            "7"
+          ],
+          "n_val": 288,
+          "acc": 0.25,
+          "bal_acc": 0.24999999999999997,
+          "majority_acc": 0.25,
+          "majority_bal_acc": 0.25
+        },
+        {
+          "val_subjects": [
+            "8"
+          ],
+          "n_val": 288,
+          "acc": 0.3506944444444444,
+          "bal_acc": 0.3506944444444444,
+          "majority_acc": 0.25,
+          "majority_bal_acc": 0.25
+        },
+        {
+          "val_subjects": [
+            "9"
+          ],
+          "n_val": 288,
+          "acc": 0.40625,
+          "bal_acc": 0.40625,
+          "majority_acc": 0.25,
+          "majority_bal_acc": 0.25
+        }
+      ],
+      "n_subjects": 9,
+      "n_epochs": 2592,
+      "passed": true,
+      "borderline": true
+    }
+  ]
+}

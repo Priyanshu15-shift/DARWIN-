@@ -1,0 +1,45 @@
+{
+  "checkpoint": "phase0_dryrun.pt",
+  "space": "pre_projection_64d",
+  "split": "epoch_level_stratified",
+  "probe_sessions": "train",
+  "train_sessions": {
+    "bci_iv_2a": [
+      "0train"
+    ],
+    "bci_iv_2b": [
+      "0train",
+      "1train",
+      "2train"
+    ]
+  },
+  "results": [
+    {
+      "dataset": "bci_iv_2a",
+      "num_subjects": 9,
+      "chance": 0.1111111111111111,
+      "final_val_acc": 0.9118773937225342,
+      "best_val_acc": 0.9137930870056152,
+      "n_val_epochs": 522,
+      "collapsed_warning": false
+    },
+    {
+      "dataset": "bci_iv_2b",
+      "num_subjects": 9,
+      "chance": 0.1111111111111111,
+      "final_val_acc": 0.83152174949646,
+      "best_val_acc": 0.842391312122345,
+      "n_val_epochs": 736,
+      "collapsed_warning": false
+    },
+    {
+      "dataset": "physionet",
+      "num_subjects": 109,
+      "chance": 0.009174311926605505,
+      "final_val_acc": 0.7735947370529175,
+      "best_val_acc": 0.7754248380661011,
+      "n_val_epochs": 3825,
+      "collapsed_warning": false
+    }
+  ]
+}

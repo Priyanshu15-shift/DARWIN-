@@ -1,0 +1,46 @@
+{
+  "checkpoint": "phase0_untrained.pt",
+  "space": "pre_projection_64d",
+  "split": "subject_disjoint_balanced",
+  "probe_sessions": "train",
+  "train_sessions": {
+    "bci_iv_2a": [
+      "0train"
+    ],
+    "bci_iv_2b": [
+      "0train",
+      "1train",
+      "2train"
+    ]
+  },
+  "datasets": [
+    "bci_iv_2a",
+    "bci_iv_2b",
+    "physionet"
+  ],
+  "chance": 0.3333333333333333,
+  "final_val_acc": 0.9155092835426331,
+  "best_val_acc": 0.9340277910232544,
+  "per_dataset_recall": {
+    "bci_iv_2a": 0.9965277777777778,
+    "bci_iv_2b": 1.0,
+    "physionet": 0.75
+  },
+  "confusion": [
+    [
+      574,
+      2,
+      0
+    ],
+    [
+      0,
+      576,
+      0
+    ],
+    [
+      111,
+      33,
+      432
+    ]
+  ]
+}

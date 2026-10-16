@@ -71,6 +71,7 @@ from lsp import LSPBank
 from encoder import Phase0Encoder
 from projection_head import ProjectionHead
 from losses import InfoNCELoss
+from cache_config import CACHE_DIR  # shared, versioned cache path (same one the probes use)
 
 
 # Datasets with no cross-session claim (single session): exempt from the
@@ -228,7 +229,7 @@ def group_positions_by_dataset(dataset, batch_positions):
 def train_phase0(
     dataset_keys,
     channel_names_by_dataset,
-    cache_dir="./cache",
+    cache_dir=CACHE_DIR,
     batch_size=64,
     k_per_subject=2,
     lr=1e-3,
@@ -269,6 +270,7 @@ def train_phase0(
         device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"[train] device: {device}")
     print(f"[train] pooling datasets: {dataset_keys}")
+    print(f"[train] cache_dir: {cache_dir}")
 
     torch.manual_seed(seed)
 
@@ -319,6 +321,7 @@ def train_phase0(
 
     best_loss = float("inf")
     epochs_without_improvement = 0
+    mean_epoch_loss = float("nan")
     loss_history = []
 
     for epoch in range(1, max_epochs + 1):
@@ -445,7 +448,10 @@ if __name__ == "__main__":
                          help="One or more dataset keys to pool. openbmi "
                               "excluded -- unresolved download issue. "
                               "e.g. --datasets bci_iv_2a bci_iv_2b physionet")
-    parser.add_argument("--cache_dir", type=str, default="./cache")
+    parser.add_argument("--cache_dir", type=str, default=CACHE_DIR,
+                         help="Defaults to the current pipeline version's cache dir "
+                              "(see cache_config.py). Pass explicitly only to "
+                              "override it deliberately.")
     parser.add_argument("--batch_size", type=int, default=64,
                          help="Spec wants >=64. With bci_iv_2a (9) + "
                               "bci_iv_2b (9) + physionet (~109) pooled, "

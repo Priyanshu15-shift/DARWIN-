@@ -1,0 +1,64 @@
+C:\Users\Admin\DARWIN\phase0\lsp.py:112: FutureWarning: Montage name 'standard_1020' is deprecated and will be removed in MNE 1.14. Use 'colin27_1020' instead.
+  montage = mne.channels.make_standard_montage("standard_1020")
+C:\Users\Admin\DARWIN\phase0\lsp.py:112: FutureWarning: Montage name 'standard_1020' is deprecated and will be removed in MNE 1.14. Use 'colin27_1020' instead.
+  montage = mne.channels.make_standard_montage("standard_1020")
+C:\Users\Admin\DARWIN\phase0\lsp.py:112: FutureWarning: Montage name 'standard_1020' is deprecated and will be removed in MNE 1.14. Use 'colin27_1020' instead.
+  montage = mne.channels.make_standard_montage("standard_1020")
+C:\Users\Admin\DARWIN\phase0\lsp.py:112: FutureWarning: Montage name 'standard_1020' is deprecated and will be removed in MNE 1.14. Use 'colin27_1020' instead.
+  montage = mne.channels.make_standard_montage("standard_1020")
+C:\Users\Admin\DARWIN\phase0\lsp.py:112: FutureWarning: Montage name 'standard_1020' is deprecated and will be removed in MNE 1.14. Use 'colin27_1020' instead.
+  montage = mne.channels.make_standard_montage("standard_1020")
+C:\Users\Admin\DARWIN\phase0\lsp.py:112: FutureWarning: Montage name 'standard_1020' is deprecated and will be removed in MNE 1.14. Use 'colin27_1020' instead.
+  montage = mne.channels.make_standard_montage("standard_1020")
+Using device: cuda
+Using cache_dir: cache\v2_bandpass0.5-48_car
+Loaded checkpoint with datasets ['bci_iv_2a', 'bci_iv_2b', 'physionet'], final Phase 0 loss: nan
+Probe sessions: {'bci_iv_2a': ['0train'], 'bci_iv_2b': ['0train', '1train', '2train']} (checkpoint train_sessions: {'bci_iv_2a': ['0train'], 'bci_iv_2b': ['0train', '1train', '2train']})
+Probing PRE-PROJECTION 64-d encoder embeddings (projection head not used).
+
+============================================================
+G3 task probe -- bci_iv_2a
+============================================================
+[probe] Discovered 4 classes in 'bci_iv_2a': {'feet': 0, 'left_hand': 1, 'right_hand': 2, 'tongue': 3}
+[sampler] bci_iv_2a: sessions ['0train'] kept -> 2592/5184 epochs, 9 subjects (dropped labels: ['1test'])
+[sampler] total epochs indexed: 2592
+Extracting pre-projection embeddings (all subjects, once)...
+embeddings: (2592, 64) from 9 subjects
+Class counts (all probed epochs):
+  feet            648  (25.0%)
+  left_hand       648  (25.0%)
+  right_hand      648  (25.0%)
+  tongue          648  (25.0%)
+Majority-class share: 0.2500
+
+CV: loso, 9 subject-disjoint folds (standardize=True, class_weight=True)
+  fold  1/9  val=1              n=  288  acc=0.340  bal_acc=0.340  majority_acc=0.250
+  fold  2/9  val=2              n=  288  acc=0.295  bal_acc=0.295  majority_acc=0.250
+  fold  3/9  val=3              n=  288  acc=0.361  bal_acc=0.361  majority_acc=0.250
+  fold  4/9  val=4              n=  288  acc=0.302  bal_acc=0.302  majority_acc=0.250
+  fold  5/9  val=5              n=  288  acc=0.257  bal_acc=0.257  majority_acc=0.250
+  fold  6/9  val=6              n=  288  acc=0.299  bal_acc=0.299  majority_acc=0.250
+  fold  7/9  val=7              n=  288  acc=0.264  bal_acc=0.264  majority_acc=0.250
+  fold  8/9  val=8              n=  288  acc=0.351  bal_acc=0.351  majority_acc=0.250
+  fold  9/9  val=9              n=  288  acc=0.358  bal_acc=0.358  majority_acc=0.250
+
+--- bci_iv_2a: G3 task probe (9 folds, loso) ---
+Classes:                 4
+Chance level:            0.2500
+G3 threshold:            0.3000 (chance + 5 pp)
+Accuracy:                0.3140 +/- 0.0398
+Balanced accuracy:       0.3140 +/- 0.0398
+Majority-class acc:      0.2500  (predict the train majority class)
+Accuracy over majority:  +0.0640
+Verdict metric:          balanced = 0.3140 (SEM 0.0133)
+Pooled per-class recall: feet=0.355  left_hand=0.327  right_hand=0.230  tongue=0.344
+G3 (bci_iv_2a): PASS
+
+============================================================
+G3 SUMMARY (task probe, pre-projection, subject-disjoint folds)
+============================================================
+  bci_iv_2a  balanced 0.3140 +/- 0.0398 vs threshold 0.3000 (chance 0.25, 4 classes, 9 loso folds; acc 0.314, majority 0.250) -> PASS
+
+G3: PASS (every probed dataset is at least chance + 5 pp).
+The subject-ID probe is a diagnostic only (not a gate): run probe_subject_leakage.py and plot it against this result for ablation 12.
+Wrote task_phase0_untrained_bncal_bci_iv_2a.pt.json

@@ -31,13 +31,19 @@ actual files on disk):
       caller-supplied (PairDataset takes no default), so pass
       cache_config.CACHE_DIR explicitly rather than hardcoding a path.
     - dataset_name is snake_case: bci_iv_2a, bci_iv_2b, physionet, openbmi
-    - Each .npz holds multiple arrays; we only use:
+      (Phase 0 currently pools the first three; openbmi is deferred until
+      its download completes)
+    - Each .npz holds multiple arrays. Phase 0 training reads:
         - 'X': shape (n_epochs, n_channels, n_timepoints), float32
-      Other keys present in the file ('y', 'subject', 'session',
-      'pct_clipped_per_epoch', 'pre_norm_median', 'pre_norm_mad',
-      'pipeline_version') are ignored here — 'y' and 'subject'
-      become relevant later for the eval probe (step 7), not for
-      Phase 0 pretraining itself.
+        - 'session': per-epoch session label, read once at indexing time
+          for the session filter (spec rev A, R1)
+      Read only on the evaluation side (get_meta, the embedding export hook
+      in train_phase0.py, and the probes), never used to train Phase 0:
+        - 'y' (task label) and, in caches that have them, 'run',
+          'trial_idx', 'order_idx' (older caches lack the last three;
+          get_meta then returns ""/-1)
+      Present in the file but ignored here: 'subject', 'pct_clipped_per_epoch',
+      'pre_norm_median', 'pre_norm_mad', 'pipeline_version'.
 """
 
 import os
@@ -77,12 +83,14 @@ class PairDataset(Dataset):
             current pipeline version rather than silently defaulting
             to a stale or nonexistent path.
         datasets: list of dataset names to include, e.g.
-                   ["BCI-IV-2a", "PhysioNet"]. Must match subfolder names
-                   under cache_dir.
+                   ["bci_iv_2a", "physionet"]. Must match the snake_case
+                   subfolder names under cache_dir (bci_iv_2a, bci_iv_2b,
+                   physionet, openbmi).
         subjects: optional dict {dataset_name: [subject_ids]} to restrict
-                   which subjects are pulled in (useful while PhysioNet /
-                   OpenBMI caching is still in progress — only pull
-                   subjects that are actually done).
+                   which subjects are pulled in (useful while a dataset's
+                   caching is still in progress, e.g. OpenBMI, which is
+                   deferred -- only pull subjects that are actually done --
+                   and for the subject-disjoint splits of the G3 task probe).
         sessions: optional dict {dataset_name: [session labels to keep]}.
                    See the SESSION FILTER note in the module docstring.
                    None keeps every session of every dataset.
@@ -190,10 +198,16 @@ class PairDataset(Dataset):
 
     @staticmethod
     def _read_sessions(path):
-        """Per-epoch session labels as a string array. Requires a v3 cache
-        (full_pool_preprocess.py output); the 'session' key has been stored
-        since v2, but run inspect_cache.py to confirm the labels."""
-        with np.load(path, allow_pickle=False) as d:
+        """Per-epoch session labels as a string array. Requires the 'session'
+        key in each cached .npz (full_pool_preprocess.py output; stored since
+        cache v2). Run inspect_cache.py to confirm the exact labels per
+        dataset. ('run', 'trial_idx' and 'order_idx' exist only in newer
+        caches; see get_meta.)"""
+        # allow_pickle=True ONLY for this small metadata array: the cache
+        # stores 'session' as an object array (strings), which numpy refuses to
+        # read otherwise. Safe for your own cache files; 'X' is still loaded
+        # with allow_pickle=False in _load_subject.
+        with np.load(path, allow_pickle=True) as d:
             return d["session"].astype(str)
 
     def _load_subject(self, dataset_name, subject_id):
@@ -219,7 +233,9 @@ class PairDataset(Dataset):
         key = (dataset_name, subject_id)
         if key not in self._meta_cache:
             path = os.path.join(self.cache_dir, dataset_name, f"subject_{subject_id}.npz")
-            with np.load(path, allow_pickle=False) as d:
+            # allow_pickle=True: metadata arrays (session/run) may be object
+            # arrays; see _read_sessions. Only these keys are read here.
+            with np.load(path, allow_pickle=True) as d:
                 self._meta_cache[key] = {
                     k: (d[k] if k in d.files else None) for k in self._META_KEYS
                 }
@@ -284,9 +300,16 @@ class SubjectBalancedBatchSampler(torch.utils.data.Sampler):
     intra-subject positive pairs exist, while having P>1 distinct
     subjects per batch supplies the cross-subject negatives InfoNCE needs.
 
-    This also directly serves Gate 1 (subject-ID linear probe): a batch
-    composition that reliably surfaces same-subject pairs is what makes
-    subject-identity structure learnable in the embedding space at all.
+    This also keeps some subject structure learnable in the embedding space,
+    which SSRS donor matching needs (rev A section 9). The subject-ID linear
+    probe is a DIAGNOSTIC, not a gate: the Phase 0 gate is G3, the task probe.
+
+    NOTE (pooled runs): subjects are drawn uniformly over (dataset, subject)
+    keys, so with bci_iv_2a + bci_iv_2b + physionet pooled, physionet's 109
+    subjects dominate batch composition (roughly 2 subjects each from the two
+    9-subject datasets per batch of 32). train_phase0.py routes each dataset's
+    clips through its own LSP and a separate encoder sub-batch, so the small
+    datasets see very small sub-batches.
 
     If a subject has fewer than K clips available (shouldn't happen with
     real EEG data, but defensive), that subject is skipped for that draw
@@ -376,6 +399,10 @@ def make_phase0_dataloader(cache_dir, datasets, subjects=None, sessions=None,
     loop's InfoNCE / negative-sampling logic needs the subject labels to
     know which positions in the batch share a subject — expose them via
     dataset.index if not already tracked elsewhere.
+
+    sessions: optional {dataset: [session labels to keep]}, passed to
+    PairDataset (see the SESSION FILTER note in the module docstring).
+    Phase 0 must never see a held-out test session (spec rev A, R1).
     """
     dataset = PairDataset(cache_dir=cache_dir, datasets=datasets,
                           subjects=subjects, sessions=sessions)
@@ -406,8 +433,8 @@ if __name__ == "__main__":
 
     # NOTE: batch_size here is small (16) because bci_iv_2a only has 9
     # subjects and k_per_subject=2 needs batch_size/2 distinct subjects
-    # per batch (8 <= 9, OK). Once physionet/openbmi are fully cached and
-    # mixed in, batch_size can go up to the spec's >=64 — with more
+    # per batch (8 <= 9, OK). Once physionet is mixed in (openbmi is
+    # deferred), batch_size can go up to the spec's >=64 — with more
     # subjects available, larger P x K batches become possible.
     loader = make_phase0_dataloader(
         cache_dir=CACHE_DIR,

@@ -5,14 +5,23 @@ Phase 0 augmentation pipeline for DARWIN self-supervised pretraining.
 PERFORMANCE NOTE (FFT fix):
 The original implementation called augment() in a Python loop over batch
 elements, meaning freq_mask did B separate rfft+irfft calls per view.
-This version vectorizes freq_mask (and most other augmentations) to
-operate on (B, C, T) tensors directly — ONE FFT per batch instead of B.
-Combined with encoder.py's spectral_decompose caching, this eliminates
-the dominant training bottleneck.
+This version vectorizes freq_mask, channel_dropout, gaussian_noise and
+amplitude_scale to operate on (B, C, T) tensors directly — ONE FFT per
+batch instead of B. time_shift, time_mask and temporal_crop still loop over
+samples (cheap indexing/interpolation). This removes the B-fold FFT cost on
+the augmentation side only: encoder.py's spectral_decompose is a separate
+cost (a fixed FFT filter bank run on every forward pass) and is NOT cached.
 
 Each function now accepts EITHER (C, T) single-epoch OR (B, C, T) batched
 input and returns the same shape. The training loop calls augment_batch()
 once per view to form the positive pair for InfoNCE.
+
+SCOPE (spec rev A): these are Phase 0 TRAINING augmentations, applied on the
+raw per-dataset channels BEFORE LSP (so channel_dropout pressures LSP). They
+are not the synthetic drift injection used in evaluation (rev A section 10),
+which is applied to the raw signal before CAR in a separate module. The band
+edges below are shared with encoder.py so freq_mask and the encoder's filter
+bank always use the same frequency partition.
 """
 import torch
 import torch.nn.functional as F
@@ -139,7 +148,7 @@ def time_mask(x, max_mask_len=100, n_masks=1):
 
 def freq_mask(x, max_bands_to_mask=2, sample_rate=250, bands=None):
     """
-    Band-specific frequency masking (spec v3, Section 6, F2).
+    Band-specific frequency masking (spec v3 Section 6, F2; unchanged in rev A).
     
     FFT-OPTIMIZED: Operates on (B, C, T) in a SINGLE rfft+irfft call.
     This is the critical fix — the old version looped over B samples,
@@ -243,7 +252,7 @@ class AugmentationConfig:
     ):
         self.use_time_shift = use_time_shift
         self.max_shift = max_shift
-        self.use_channel_dropout = channel_dropout
+        self.use_channel_dropout = use_channel_dropout
         self.channel_dropout_p = channel_dropout_p
         self.use_gaussian_noise = use_gaussian_noise
         self.noise_std = noise_std
@@ -262,7 +271,7 @@ class AugmentationConfig:
 def augment(x, config=None):
     """
     Applies the full augmentation pipeline to a single epoch (C, T).
-    Order matches spec v3 Section 6 exactly.
+    Order matches spec v3 Section 6 exactly (unchanged in rev A).
     """
     if config is None:
         config = AugmentationConfig()
@@ -347,4 +356,4 @@ if __name__ == "__main__":
     print(f"  nan single: {torch.isnan(fm_single).any().item()}")
     print(f"  nan batch:  {torch.isnan(fm_batch).any().item()}")
     
-    print("\n✅ All batched augmentation shapes correct.")
+    print("\n All batched augmentation shapes correct.")
