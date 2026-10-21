@@ -181,7 +181,7 @@ SSRS on/off and LSP on/off are reported in every table.
 
 ```bash
 # Clone the repository
-git clone https://github.com/<your-username>/DARWIN-.git
+git clone https://github.com/Priyanshu15-shift/DARWIN-.git
 cd DARWIN-
 
 # Install dependencies
@@ -230,19 +230,3 @@ DARWIN-/
 - Strict LOSO with per-fold Phase 0 retraining
 - Additional multi-day datasets as generality checks
 
-## Citation
-
-If you use this work, please cite it as:
-
-```bibtex
-@misc{darwin2026,
-  title  = {DARWIN: Drift-Aware, Subject-Adaptive EEG Decoding Without Subject-Level Calibration},
-  author = {Richa},
-  year   = {2026},
-  note   = {Work in progress}
-}
-```
-
-## License
-
-Specify a license (e.g., MIT) and add a `LICENSE` file.
