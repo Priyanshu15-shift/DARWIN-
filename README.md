@@ -1,250 +1,248 @@
 # DARWIN
 
-### Dual Adaptation Framework for Robust Cross-Session and Cross-Subject EEG Decoding
+**Drift-Aware, Subject-Adaptive EEG Decoding Without Subject-Level Calibration**
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Status](https://img.shields.io/badge/status-ongoing-blue)]()
-[![Python](https://img.shields.io/badge/python-3.9%2B-blue)]()
+DARWIN is a motor-imagery EEG decoding framework that adapts to new users and to signal drift *during* a session, without collecting labelled calibration data from the new user. It combines a self-supervised encoder, a donor-matching prior, and a recursive filter that tracks slow drift in a single shared embedding space.
 
-> A calibration-free deep learning framework for robust EEG decoding that jointly models inter-subject variability and intra-session drift through similarity-based subject conditioning and continuous latent-state tracking — without gradient updates at test time.
+> **Status:** Research project in active development. Numbers and results will be added as experiments complete.
 
 ---
 
 ## Table of Contents
 
 - [Overview](#overview)
-- [Why DARWIN](#why-darwin)
-- [Key Contributions](#key-contributions)
+- [Key Features](#key-features)
 - [Architecture](#architecture)
-- [Core Components](#core-components)
-- [Methodology](#methodology)
-- [Repository Structure](#repository-structure)
+- [How It Works](#how-it-works)
 - [Datasets](#datasets)
-- [Evaluation](#evaluation)
-- [Design Principles](#design-principles)
+- [Evaluation Protocol](#evaluation-protocol)
+- [Baselines](#baselines)
+- [Ablations](#ablations)
+- [Getting Started](#getting-started)
+- [Project Structure](#project-structure)
+- [Scope and Limitations](#scope-and-limitations)
 - [Roadmap](#roadmap)
-- [Documentation](#documentation)
 - [Citation](#citation)
 - [License](#license)
-- [Acknowledgements](#acknowledgements)
 
 ---
 
 ## Overview
 
-Electroencephalography (EEG)-based Brain-Computer Interface (BCI) systems routinely lose accuracy when a decoder trained on one subject or recording session is deployed on a new user or a new session. This degradation stems from two distinct, and often conflated, sources of distribution shift:
+EEG-based brain-computer interfaces degrade when the user changes (cross-subject shift), when the recording day changes (cross-session shift), and when the signal slowly drifts within a session. Most solutions need labelled calibration trials from every new user.
 
-| Source | Nature | Cause |
-|---|---|---|
-| **Cross-subject variability** | Discrete, fixed at session start, unstructured | Anatomical and physiological differences between individuals (skull thickness, cortical folding, electrode placement) |
-| **Cross-session variability** | Continuous, evolving, structured | Fatigue, electrode impedance changes, cognitive state, attention drift |
+DARWIN takes a different approach:
 
-Most existing approaches try to erase these differences through adversarial training, domain adaptation, or meta-learning. These methods can work well in narrow settings, but they typically require per-user calibration, are unstable to optimize at small subject counts, or add inference-time cost that is incompatible with real-time BCI use.
+- It uses **no subject-level, label-based calibration**. The held-out subject's labels are never used.
+- Montage differences are handled by a small projection learned from **unlabelled** data (LSP).
+- Drift is tracked online by a filter that operates in one standardized 64-dimensional space shared by every module.
 
-**DARWIN takes the opposite approach: instead of forcing invariance, it explicitly models both sources of variability**, using a mechanism suited to each one — similarity-based *matching* for the discrete, subject-level component, and Kalman *filtering* for the continuous, session-level component — inside a single shared latent space. The result is a framework that adapts to new users and drifting sessions at inference time with no labels, no backpropagation, and no calibration procedure.
+DARWIN does not claim to be the first method to address cross-session and cross-user shift. Online Riemannian mean updates, Kalman-style drift tracking and cross-session adaptation already exist. The contribution is the unified design and its evaluation against those families.
 
-## Why DARWIN
+## Key Features
 
-Prior work generally treats subject and session shift as a single nuisance factor to be removed. DARWIN's core hypothesis is that these two factors are *separable* and *qualitatively different*, and therefore deserve different tools:
-
-- **Subject identity** is essentially fixed once a session begins — a matching/selection problem best solved by comparing a new user against a pool of known source subjects.
-- **Session drift** unfolds continuously over time — a tracking/filtering problem best solved with a lightweight state estimator that updates every sample.
-
-By keeping both signals in the *same* 64-dimensional embedding space, DARWIN also sidesteps a common design flaw in Kalman-filter-based neural decoding: an undefined or hand-engineered measurement model. Because the state (subject embedding) and the measurement (encoder output) live in the identical space, the innovation term is simply their difference — no learned observation matrix required.
-
-## Key Contributions
-
-- **Unified Latent Representation** — A single shared 64-dimensional embedding space is used consistently across self-supervised pretraining, subject adaptation, drift estimation, and classification, eliminating representation mismatch between modules.
-- **Learnable Spatial Projection (LSP)** — Heterogeneous EEG channel layouts across datasets are harmonized through a trainable, data-adaptive spatial mixer rather than rigid channel intersection, preserving information from non-overlapping electrodes.
-- **Subject Similarity-Based Adaptation (SSRS)** — New users are initialized through similarity-weighted donor embeddings drawn from a source subject pool, with an entropy-gated fallback to population-level conditioning when donor matching is unreliable.
-- **Continuous Drift Tracking (DTKF)** — A lightweight diagonal Kalman filter continuously updates the subject representation throughout inference using only unlabeled data.
-- **Feature-wise Conditional Modulation (FiLM)** — Learned EEG representations are dynamically modulated according to the current subject/session state, without altering the backbone encoder.
-- **Calibration-Free Deployment** — No backpropagation, parameter updates, or supervised calibration are required at inference time.
-- **Early Empirical Validation** — A dedicated diagnostic stage tests the core subject/session separability hypothesis using baseline features, *before* any DARWIN-specific module is built, so the central assumption is checked rather than assumed.
+- **Montage-flexible input** via LSP, a ~1K-parameter learned spatial projection to 16 channels. It can revert to rigid channel intersection with a single flag.
+- **Self-supervised encoder** (EEGNet-based) trained with a subject-balanced InfoNCE objective, frozen after pre-training.
+- **SSRS (donor-based prior):** blends embeddings from similar donor subjects to initialize the state of the filter. High uncertainty in the match produces a larger initial gain.
+- **DTKF (drift-tracking Kalman filter):** a per-dimension recursive update that subtracts the task-evoked component before updating, so it follows drift rather than the stimulus.
+- **FiLM conditioning** (~2K parameters) that feeds the filtered state into the classifier.
+- **Uncertainty-aware decoding** by sampling from the filter posterior, evaluated with risk-coverage curves, ECE and NLL.
+- **Change-point handling** that skips artifact windows and re-matches donors after a genuine step change.
 
 ## Architecture
 
-DARWIN is a single, unified pipeline in which every stage reads from and writes to the same 64-dimensional embedding space:
-
 ```
-Raw EEG (C channels × T samples)
-        │
-        ▼
-CAR + MAD  (common average reference, outlier clipping)
-        │
-        ▼
-Learnable Spatial Projection  →  C' shared channels
-        │
-        ▼
-EEG Feature Encoder  (9-band spectral backbone)
-        │
-        ▼
-Projection Head  →  64-dim unified embedding z
-        │
-        ▼
-Self-Supervised Representation Learning  (InfoNCE, subject-balanced negatives)
-        │
-        ▼
-  ┌───────────────────────────────┐
-  │   Subject & Session Adaptation │
-  │                                 │
-  │   SSRS (donor matching)         │
-  │   DTKF (drift tracking) ────────┼──── updates subject embedding every sample
-  └───────────────────────────────┘
-        │
-        ▼
-FiLM-Conditioned Classifier
-        │
-        ▼
-Task Prediction
+Raw EEG (any montage)
+      │
+CAR + MAD preprocessing
+      │
+LSP  (~1K params, 16 ch)
+      │
+EEGNet encoder  (frozen after Phase 0)
+      │
+┌─────▼───────────────────────────────────────────┐
+│   64-d standardized state space (pre-projection) │
+│   every module reads or writes this space        │
+└─────▲──────────────▲───────────────────▲─────────┘
+      │              │                   │
+ Phase 0 SSL     SSRS prior          DTKF update
+ (InfoNCE)    (donor blend: m0, P0)  (class-marginal innovation)
+                                          ▲
+                                          │ class posterior
+      state ──► FiLM (~2K) ──► Frozen classifier ──► Prediction + uncertainty
 ```
 
-**Key invariant:** the projection-head output is the *only* embedding space in the system. Self-supervised pretraining, SSRS donor centroids, DTKF measurements, and FiLM conditioning all operate on this same 64-dimensional representation by construction — there is no separate measurement model and no bridging module between components.
+Training runs in phases:
 
-## Core Components
+| Phase | What is trained | Notes |
+|-------|-----------------|-------|
+| 0 | Encoder (self-supervised, InfoNCE, subject-balanced) | Frozen afterwards. Uses unlabelled data only |
+| 1 | FiLM and classifier head on donor data | Frozen at test time |
+| Test | Nothing is trained | State is updated online by the filter |
 
-### Learnable Spatial Projection (LSP)
+## How It Works
 
-A lightweight, dataset-aware channel mixer that aligns EEG montages of differing size (e.g. 64, 32, 22, or 16 channels) into a common spatial representation. Each dataset gets its own learnable projection matrix, initialized as a soft, spatially-local channel selector and refined during pretraining. Unlike rigid channel intersection, LSP preserves information from electrodes that don't overlap across datasets, at a cost of roughly 1K parameters total.
+### Prior (SSRS)
 
-### Self-Supervised Representation Learning
+With donor weights `s_i` and donor embeddings `e_i`:
 
-Task-aware EEG embeddings are learned via contrastive (InfoNCE) pretraining over pooled, unlabeled data from all datasets. Negative sampling is **subject-balanced** — every batch includes same-subject positives alongside cross-subject negatives — specifically to prevent the encoder from taking the shortcut of encoding subject identity instead of task-relevant neural content. Two linear probes (subject-ID and trial/class) gate progression to the next training phase, catching an identity-shortcut failure mode early and cheaply.
+$$m_0 = \sum_i s_i e_i, \qquad P_0 = \mathrm{diag}(v_w)\,(1 + \lambda \tilde H)$$
 
-### Source Subject Relevance Scorer (SSRS)
+`v_w` is the weighted per-dimension variance of the blended donors and `H̃ ∈ [0, 1]` is the normalized entropy of the similarity distribution. If no good match exists, the prior falls back to the population mean and variance.
 
-Given as little as ~10 seconds of unlabeled EEG from a previously unseen user, SSRS computes a user centroid in the shared embedding space, scores its similarity against every source subject's centroid, and forms an initial personalized embedding as a similarity-weighted combination of donor embeddings. An entropy check on the similarity distribution governs a graceful fallback: when confidence is low, DARWIN conditions on a population-average embedding rather than trusting an unreliable match.
+### State model
 
-### Drift-Tracking Kalman Filter (DTKF)
+For window embedding `z_t`, class posterior `π_k(t)` from the frozen classifier and source class offsets `μ_k`:
 
-Rather than assuming a subject's representation is static for the duration of a session, DTKF treats it as a latent state that evolves slowly over time. A diagonal (per-dimension) Kalman filter updates this state on every incoming sample using the innovation between the current encoder output and the previous state estimate — no observation matrix is needed, since state and measurement share the same space. Outlier rejection and value clipping guard against artifact-driven runaway drift, keeping the mechanism robust and cheap enough for real-time use.
+$$x_t = x_{t-1} + w_t,\; w_t \sim \mathcal{N}(0, Q) \qquad z_t = x_t + \sum_k \pi_k(t)\,\mu_k + v_t,\; v_t \sim \mathcal{N}(0, R)$$
 
-### FiLM-Based Subject Conditioning
+### Class-marginal update
 
-Feature-wise Linear Modulation applies a learned per-band scale and shift, derived from the current subject/session embedding, to the encoder's features before classification. This lets predictions stay personalized to the current user and moment in time without modifying or retraining the backbone encoder.
+The expected task-evoked part of the embedding is removed before the update, so the filter does not chase the stimulus:
 
-## Methodology
+$$\nu_t = z_t - x_{t-1} - \sum_k \pi_k(t)\,\mu_k, \qquad K_t = \frac{P_{t|t-1}}{P_{t|t-1} + R}, \qquad x_t = x_{t-1} + K_t\,\nu_t$$
 
-DARWIN is trained in two phases and deployed with a fixed, frozen backbone.
+All operations are per dimension. The class posterior is computed from the state at `t-1`, so a prediction never reinforces itself within a step. The primary policy updates on every window; updating on baseline windows only is available as an alternative.
 
-**Phase I — Self-Supervised Representation Learning**
-- Learn dataset-independent EEG representations from pooled, unlabeled data
-- Contrastive (InfoNCE) objective with subject-balanced negative sampling
-- Encoder is frozen once two linear-probe diagnostics pass (subject-ID and task-content)
+### Noise estimation (label-free)
 
-**Phase II — Supervised Fine-Tuning**
-- Initialize subject representations from the frozen embedding space
-- Train FiLM conditioning layers and the lightweight classifier
-- Encoder weights remain fixed throughout
+- **R:** per-dimension residual variance from stationary within-class segments of donor subjects.
+- **Q:** per-dimension variance of the window-to-window displacement of the session-level embedding mean (within-session drift only). The between-day offset is handled by the SSRS prior.
+- **Optional:** R can be scaled by a clipped running average of the normalized innovation squared.
 
-**Test-Time Adaptation (Deployment)**
-1. Estimate an initial subject embedding via SSRS from a short window of unlabeled data.
-2. Continuously refine that embedding sample-by-sample using DTKF.
-3. Condition extracted EEG features through FiLM.
-4. Produce a task prediction with the frozen classifier.
+### Change-point handling
 
-No labels, calibration procedure, or optimization step is required at any point during deployment.
+For each window the normalized innovation squared is compared with a chi-square quantile. Windows above the gate are skipped (blinks, electrode slips). After `k` consecutive skips a change point is declared, `P` is reset to `P_0`, and SSRS is re-run on the most recent 10 s buffer.
 
-## Repository Structure
+### Uncertainty-aware decoding
 
-```
-DARWIN/
-├── README.md
-├── LICENSE
-├── CHANGELOG.md        
-├── requirements.txt
-│
-├── reports/              ← Research progress lives here
-│   ├── weekly/
-│   │   ├── week01.md
-│
-├── docs/
-│   ├── architecture.md         ← module-by-module spec (LSP, SSRS, FiLM, DTKF, classifier)
-│   ├── preprocessing.md        ← the raw-EEG → windowed-embedding data pipeline
-│   ├── training.md
-│   ├── evaluation.md
-│   ├── datasets.md
-│   ├── usage.md
-│   └── references.md
-│
-├── src/
-│   ├── data/
-│   ├── models/
-│   ├── losses/
-│   ├── trainers/
-│   ├── evaluation/
-│   └── utils/
-│
-├── notebooks/
-│
-└── experiments/
-```
+`S` samples (about 10–20) are drawn from `N(m_t, P_t)`, passed through FiLM and the classifier, and their softmax outputs averaged. Predictive entropy and between-sample disagreement serve as uncertainty scores. They are judged empirically (risk-coverage, ECE, NLL) and are not assumed to be calibrated.
 
 ## Datasets
 
-DARWIN is designed to support heterogeneous EEG datasets that differ in channel layout, sampling protocol, and task paradigm. The preprocessing pipeline accommodates these differences through the Learnable Spatial Projection rather than a fixed channel intersection, so no dataset is forced to sacrifice electrodes just because another dataset lacks them.
+| Dataset | Subjects | Channels | Sessions | Role |
+|---------|----------|----------|----------|------|
+| OpenBMI | 54 | 62 | 2 | Primary: significance testing, cross-session and drift analysis |
+| BCI Competition IV-2a | 9 | 22 | 2 | Cross-subject and cross-session, per-subject reporting |
+| BCI Competition IV-2b | 9 | 3 | 5 | LSP stress test on a 3-channel montage, per-subject reporting |
+| PhysioNet MI | 109 | 64 | 1 | Largest donor pool, cross-subject and streaming only |
+| SEED | 15 | 62 | 3 | Optional generality check (emotion recognition) |
 
-Full dataset preparation details are documented in [`docs/datasets.md`](docs/datasets.md).
+Pooled-donor experiments harmonize to left-hand vs right-hand imagery. Four-class results (2a, PhysioNet) are reported per dataset. Please verify session splits for the dataset release you use.
 
-## Evaluation
+## Evaluation Protocol
 
-DARWIN is evaluated across several generalization regimes designed to isolate and stress-test each source of distribution shift:
+1. **Cross-subject LOSO (headline):** transductive leave-one-subject-out. Unlabelled data from the held-out subject may be used in Phase 0, but its labels never are. The held-out subject is always excluded from the donor pool and from Phase 1.
+2. **Cross-session LOSO:** train on donors' first session, test on the held-out subject's later session. Phase 0 never sees the test session.
+3. **Streaming within-session:** chronological windows, with accuracy over time-in-session and first-half vs second-half accuracy.
+4. **Synthetic drift injection:** slow gain modulation, low-frequency offset and per-channel attenuation applied to the raw EEG (ramp, step and random-walk profiles), measuring how much of the no-drift accuracy each method recovers.
+5. **Health metrics:** SSRS fallback rate, mean normalized innovation squared (should be near 1) and change-point counts.
+6. **Strict variant:** subject-grouped 5-fold with test subjects excluded from Phase 0 and the donor pool.
 
-- **Leave-One-Subject-Out (LOSO)** — train on all but one subject, evaluate on the held-out subject; SSRS initializes from the source pool and DTKF tracks drift across the held-out session.
-- **Leave-One-Session-Out (LOSSO)** — train on session 1 across all subjects, evaluate on session 2 of the same subjects; isolates pure session-drift recovery.
-- **Cross-Dataset Evaluation** — train on a subset of datasets, evaluate on an unseen dataset with a different electrode montage and task paradigm.
-- **Calibration Curve** — accuracy as a function of unlabeled adaptation data (0s, 5s, 10s, 30s, 60s), showing how quickly SSRS + DTKF approach the fully-supervised upper bound.
-- **Component Ablations** — each module (LSP, SSRS, DTKF, FiLM, subject-balanced sampling) is removed in isolation and compared against the full system.
+Statistics: paired Wilcoxon signed-rank test across subjects, at least 3 seeds, and identical splits and preprocessing for every method. Baselines are tuned on source folds only.
 
-Results are benchmarked against classical EEG decoders (EEGNet, FBCNet, EEG Conformer), a graph-attention baseline (GAT), a domain-generalization baseline (CORAL-DG), and adversarial/disentanglement state-of-the-art methods (SCALE-Net, TS²-DER).
+## Baselines
 
-Diagnostic tooling — subject-ID/task-content linear probes, embedding-space visualization, SSRS fallback-rate logging, and DTKF innovation-residual analysis — is used throughout to debug and validate each component rather than relying on end-task accuracy alone.
+| Family | Methods |
+|--------|---------|
+| Zero adaptation | EEGNet trained on pooled donors |
+| Static alignment | Euclidean alignment (EA) + EEGNet; CORAL; Riemannian re-centring with MDM / tangent-space LR |
+| Online alignment | Online Riemannian mean update |
+| Online normalization | AdaBN; exponential moving standardization (EMS); tuned fixed-gain EMA |
+| Test-time adaptation | Tent |
+| Adversarial | DANN-style subject-adversarial model |
+| Calibration reference | 5-shot fine-tuning |
+| Foundation models | LaBraM, CBraMod (frozen linear probe, reference only) |
 
-## Design Principles
+## Ablations
 
-DARWIN is built around four guiding principles:
+Each ablation targets a single question:
 
-1. **Explicit modeling instead of enforced invariance** — subject and session variation are treated as signal to condition on, not noise to erase.
-2. **Lightweight adaptation suitable for real-time deployment** — the full model targets well under 50K parameters with no test-time backpropagation.
-3. **Calibration-free inference** — no supervised calibration step is required for a new user or session.
-4. **Unified latent representations across all adaptation modules** — a single embedding space removes the need for bridging or measurement-model engineering between components.
+| # | Comparison | Question |
+|---|------------|----------|
+| 1 | Full filter vs tuned EMA vs AdaBN vs EMS | Is the filter formulation justified? |
+| 2 | Class-marginal vs baseline-window-only vs uncorrected updates | Does it track drift or the task? |
+| 3 | Chronological vs shuffled vs time-reversed streams | Does it use temporal structure? |
+| 4 | Skewed class sequences (e.g., 80/20, single-class runs) | Does the class-marginal update lock in errors? |
+| 5 | Oracle centroids (unlabelled full-session, labelled few-shot) | How far is the online estimate from the upper bound? |
+| 6 | Fixed R vs innovation-scaled R | Is scaling worth the complexity? |
+| 7 | Change-point handling on vs off | Do step changes break the filter? |
+| 8 | Donor bank size sweep | Does more donors help or cause negative transfer? |
+| 9 | Resting vs task warm-up windows for SSRS | What data does donor matching need? |
+| 10 | Standardized vs raw vs tangent-space state | Does the geometry matter? |
+| 11 | FiLM matched vs mismatched conditioning | Does consistency training help? |
+| 12 | Phase 0 subject-probe vs task-probe; transductive vs strict | Does the shared space keep task structure? |
+
+SSRS on/off and LSP on/off are reported in every table.
+
+## Getting Started
+
+> The commands below are placeholders. Replace them with the actual entry points once the code is organized.
+
+```bash
+# Clone the repository
+git clone https://github.com/<your-username>/DARWIN-.git
+cd DARWIN-
+
+# Install dependencies
+pip install -r requirements.txt
+```
+
+Typical workflow:
+
+```bash
+# 1. Prepare datasets and preprocessing (CAR + MAD)
+# 2. Phase 0: self-supervised encoder training
+# 3. Phase 1: train FiLM and classifier on donor data
+# 4. Run evaluation protocols (LOSO, cross-session, streaming, drift injection)
+```
+
+## Project Structure
+
+> Update this section to match the repository layout.
+
+```
+DARWIN-/
+├── data/            # Dataset loaders and preprocessing
+├── models/          # LSP, EEGNet encoder, FiLM, classifier
+├── filter/          # SSRS prior, DTKF update, change-point logic
+├── baselines/       # EA, AdaBN, EMS, Tent, DANN, online Riemannian mean
+├── experiments/     # Evaluation protocols and ablations
+├── configs/         # Experiment configurations
+└── README.md
+```
+
+## Scope and Limitations
+
+- DARWIN claims **no subject-level, label-based calibration**. The phrase "calibration-free" is intentionally not used unqualified, because montage handling relies on a projection learned from unlabelled data.
+- The headline protocol is **transductive**: unlabelled held-out data may be used in Phase 0.
+- BCI IV-2a and 2b have only 9 subjects each and cannot carry statistical claims on their own. OpenBMI is the primary dataset for significance.
+- If the within-session drift study shows negligible drift, the contribution reduces to donor selection plus cross-session offset handling.
+- If the filter does not outperform a tuned EMA, it will be reported as a gated EMA.
 
 ## Roadmap
 
-Planned future directions beyond the current scope:
+- Full Gaussian-sum (mixture) filter with a posterior over donor weights
+- Fully adaptive, label-free estimation of Q and R
+- FiLM-confidence modulation (filter uncertainty scales FiLM parameters)
+- Fine-tuned foundation-model baselines (LaBraM, CBraMod)
+- LSP retrained on unlabelled target data; electrode-coordinate parametrization for unseen montages
+- Strict LOSO with per-fold Phase 0 retraining
+- Additional multi-day datasets as generality checks
 
-- Graph-based subject similarity propagation for SSRS
-- Full-covariance (non-diagonal) Kalman filtering for DTKF
-- Cross-paradigm EEG adaptation
-- Multi-modal physiological signal integration
-- Online continual learning
+## Citation
 
-## Documentation
+If you use this work, please cite it as:
 
-Comprehensive technical documentation lives in the `docs/` directory:
-
-| Document | Description |
-|---|---|
-| `architecture.md` | Complete architectural design |
-| `methodology.md` | Training methodology |
-| `preprocessing.md` | EEG preprocessing pipeline |
-| `datasets.md` | Dataset preparation |
-| `training.md` | Training procedures |
-| `evaluation.md` | Experimental protocols |
-| `usage.md` | Running experiments |
-| `references.md` | Bibliography |
-
-
+```bibtex
+@misc{darwin2026,
+  title  = {DARWIN: Drift-Aware, Subject-Adaptive EEG Decoding Without Subject-Level Calibration},
+  author = {Richa},
+  year   = {2026},
+  note   = {Work in progress}
+}
+```
 
 ## License
 
-This project is released under the MIT License. See [`LICENSE`](LICENSE) for details.
-
-## Acknowledgements
-
-DARWIN is inspired by recent advances in self-supervised representation learning, domain generalization, adaptive filtering, and calibration-free Brain-Computer Interface research.
-#   D A R W I N - 
- 
- #   D A R W I N - 
- 
- 
+Specify a license (e.g., MIT) and add a `LICENSE` file.
